@@ -1,0 +1,52 @@
+{
+  "name": "desktop-calendar",
+  "version": "1.0.0",
+  "description": "蒋如意开发的一款办公桌面日历代办软件",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "electron:build": "vite build && electron-builder",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fullcalendar/core": "^6.1.10",
+    "@fullcalendar/daygrid": "^6.1.10",
+    "@fullcalendar/interaction": "^6.1.10",
+    "@fullcalendar/vue3": "^6.1.10",
+    "electron-store": "^8.1.0",
+    "node-schedule": "^2.1.1",
+    "sass": "^1.69.5",
+    "vue": "^3.3.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.5.0",
+    "cross-env": "^10.1.0",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "vite": "^4.5.0"
+  },
+  "build": {
+    "appId": "com.example.desktop-calendar",
+    "productName": "MyDesktopCalendar",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
