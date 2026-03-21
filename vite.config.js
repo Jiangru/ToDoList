@@ -9,10 +9,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true
   },
-  server: {
-    host: '0.0.0.0', // 允许外部访问
-    port: 5173
-  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src')

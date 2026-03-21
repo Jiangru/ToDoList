@@ -12,6 +12,7 @@ import { ref, onMounted, inject } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
+import zhLocale from '@fullcalendar/core/locales/zh-cn';  // 引入中文语言包
 // import { getTodosForDate } from '../store/todos'; // 从主进程获取
 
 const openEditor = inject('openEditor');
@@ -41,6 +42,7 @@ function getEventForDate(date) {
 const calendarOptions = {
   plugins: [dayGridPlugin, interactionPlugin],
   initialView: 'dayGridMonth',
+  locale: zhLocale, 
   headerToolbar: {
     left: 'prev,next today',
     center: 'title',
@@ -135,6 +137,15 @@ onMounted(async () => {
         }
       }
     }
+  }
+  :deep(.fc-col-header-cell) {
+    color: #ffaa00;  // 星期字体颜色设置
+  }
+  :deep(.fc-col-header-cell.fc-day-sat) {
+    color: aquamarine; // 星期六星期天颜色设置
+  }
+  :deep(.fc-col-header-cell.fc-day-sun) {
+    color: aquamarine; // 星期六星期天颜色设置
   }
 }
 </style>
