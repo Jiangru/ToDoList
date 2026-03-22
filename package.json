@@ -29,9 +29,9 @@
   },
   "build": {
     "appId": "com.example.desktop-calendar",
-    "productName": "MyDesktopCalendar",
+    "productName": "绿能桌面办公",
     "directories": {
-      "output": "dist_electron"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
@@ -46,7 +46,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
     }
   }
 }
