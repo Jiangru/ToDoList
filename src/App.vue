@@ -1,6 +1,6 @@
 <template>
   <div class="app">
-    <Calendar />
+    <Calendar ref="calendarRef" />
     <TodoEditor
       v-if="showEditor"
       :date="selectedDate"
@@ -16,6 +16,7 @@ import { ref } from 'vue';
 import Calendar from './components/Calendar.vue';
 import TodoEditor from './components/TodoEditor.vue';
 
+const calendarRef = ref(null);             // 定义 ref
 const showEditor = ref(false);
 const selectedDate = ref('');
 const selectedTodos = ref([]);
@@ -31,11 +32,18 @@ function closeEditor() {
 }
 
 function saveTodos(date, todos) {
+  // 检查 electronAPI 是否存在
+  if (!window.electronAPI || !window.electronAPI.saveTodos) {
+    console.error('electronAPI.saveTodos 不可用，请检查预加载脚本');
+    return;
+  }
   // 调用主进程保存
   window.electronAPI.saveTodos(date, todos);
   closeEditor();
-  // 刷新日历显示
-  // 可通过事件总线或重新获取数据
+  // 刷新日历数据
+  if (calendarRef.value) {
+    calendarRef.value.refreshData();
+  }
 }
 
 // 暴露方法给 Calendar 组件使用（可通过 provide/inject 或事件）
@@ -54,16 +62,18 @@ provide('openEditor', openEditor);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  -webkit-app-region: drag;   /* 整个窗口可拖拽 */
 }
 </style>
 
 <style lang="scss">
 // 全局样式
-body {
+html, body {
   margin: 0;
   padding: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   user-select: none;
+  background: transparent !important;
 }
 ::-webkit-scrollbar {
   width: 6px;

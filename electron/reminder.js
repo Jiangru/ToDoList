@@ -17,7 +17,11 @@ function initReminder(store, win) {
 
 function scheduleReminder(todoId, reminderTime, content, win) {
   if (jobs.has(todoId)) {
-    jobs.get(todoId).cancel();
+    const existing = jobs.get(todoId);
+    if (existing && typeof existing.cancel === 'function') {
+      existing.cancel();
+    }
+    jobs.delete(todoId);
   }
   const job = schedule.scheduleJob(new Date(reminderTime), () => {
     new Notification({
@@ -34,7 +38,10 @@ function scheduleReminder(todoId, reminderTime, content, win) {
 
 function cancelReminder(todoId) {
   if (jobs.has(todoId)) {
-    jobs.get(todoId).cancel();
+    const job = jobs.get(todoId);
+    if (job && typeof job.cancel === 'function') {
+      job.cancel();
+    }
     jobs.delete(todoId);
   }
 }

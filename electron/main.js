@@ -4,7 +4,6 @@ const Store = require('electron-store');
 const { initReminder, scheduleReminder, cancelReminder } = require('./reminder.js');
 const fs = require('fs');
 const preloadPath = path.join(__dirname, 'preload.js');
-console.log('Preload exists:', fs.existsSync(preloadPath));
 
 // 数据存储
 const store = new Store({
@@ -20,6 +19,7 @@ function createWindow() {
     height: 700,
     transparent: true,
     frame: false,
+    backgroundColor: '#00000000',  // 背景透明关键
     alwaysOnTop: true,
     skipTaskbar: false,
     webPreferences: {

@@ -1,5 +1,6 @@
 // import { contextBridge, ipcRenderer } from 'electron';
 const { contextBridge, ipcRenderer } = require('electron');
+console.log('preload loaded')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getTodos: () => ipcRenderer.invoke('get-todos'),

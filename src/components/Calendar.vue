@@ -1,91 +1,304 @@
 <template>
-  <div class="calendar-container">
+  <div class="calendar-container" ref="calendarContainer">
     <FullCalendar
-      ref="fullCalendar"
+      ref="fullCalendarRef"
       :options="calendarOptions"
+    />
+    <!-- 浮动待办编辑器（悬停有待办时显示） -->
+    <TodoEditor
+      v-if="showFloatingEditor"
+      :date="hoverTodoDate"
+      :todos="hoverTodos"
+      :position="hoverPos"
+      @close="closeFloatingEditor"
+      @save="handleFloatingSave"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue';
+import { ref, onMounted, onUnmounted, inject, nextTick } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import zhLocale from '@fullcalendar/core/locales/zh-cn';  // 引入中文语言包
-// import { getTodosForDate } from '../store/todos'; // 从主进程获取
+import zhLocale from '@fullcalendar/core/locales/zh-cn';
+import TodoEditor from './TodoEditor.vue';
 
 const openEditor = inject('openEditor');
 const todosMap = ref({});
+const fullCalendarRef = ref(null);
+const calendarContainer = ref(null);
+
+// 悬停相关状态（有待办）
+const hoverTimer = ref(null);
+const hoverTodos = ref([]);
+const hoverTodoDate = ref('');
+const hoverPos = ref({ x: 0, y: 0 });
+const showFloatingEditor = ref(false);
 
 // 加载所有待办数据
 async function loadTodos() {
+  if (!window.electronAPI?.getTodos) {
+    console.error('electronAPI.getTodos 不可用');
+    return;
+  }
   const data = await window.electronAPI.getTodos();
   todosMap.value = data || {};
+  if (fullCalendarRef.value?.getApi()) {
+    fullCalendarRef.value.getApi().refetchEvents();
+  }
+  // 更新日期格子的提示元素和状态类
+  updateTips();
 }
 
-// 获取某一天的待办数量，用于日历上显示徽章
-function getEventForDate(date) {
-  const dateStr = date.toISOString().slice(0,10);
-  const todos = todosMap.value[dateStr] || [];
-  if (todos.length === 0) return [];
-  // 返回一个虚拟事件，显示待办数量
-  return [{
-    title: `${todos.length} 项待办`,
-    start: dateStr,
-    display: 'background',
-    color: 'rgba(255,193,7,0.3)',
-    classNames: ['todo-badge']
-  }];
+function refreshData() {
+  loadTodos();
 }
 
+// 更新所有日期格子：添加提示元素，并根据有无待办设置类
+function updateTips() {
+  const dayCells = document.querySelectorAll('.fc-daygrid-day');
+  dayCells.forEach(cell => {
+    const dateAttr = cell.getAttribute('data-date');
+    if (!dateAttr) return;
+
+    const hasTodos = todosMap.value[dateAttr] && todosMap.value[dateAttr].length > 0;
+
+    // 添加/更新状态类
+    if (hasTodos) {
+      cell.classList.add('has-todos');
+      cell.classList.remove('no-todos');
+    } else {
+      cell.classList.add('no-todos');
+      cell.classList.remove('has-todos');
+    }
+
+    // 确保提示元素存在
+    let tipEl = cell.querySelector('.double-click-tip');
+    if (!tipEl) {
+      tipEl = document.createElement('div');
+      tipEl.className = 'double-click-tip';
+      tipEl.textContent = '双击创建';
+      cell.appendChild(tipEl);
+    }
+  });
+}
+
+// 鼠标悬停进入待办条目（有待办）
+function onTodoMouseEnter(event, date) {
+  event.stopPropagation();
+  if (hoverTimer.value) clearTimeout(hoverTimer.value);
+  // 延迟2秒弹出浮动编辑器
+  hoverTimer.value = setTimeout(() => {
+    const x = event.clientX;
+    const y = event.clientY;
+    hoverPos.value = { x, y };
+    hoverTodoDate.value = date;
+    hoverTodos.value = todosMap.value[date] || [];
+    showFloatingEditor.value = true;
+  }, 1200);
+}
+
+function onTodoMouseLeave() {
+  if (hoverTimer.value) {
+    clearTimeout(hoverTimer.value);
+    hoverTimer.value = null;
+  }
+}
+
+// 鼠标移入日期格子（包括空白区域）
+function handleDateMouseEnter(event) {
+  const dayEl = event.target.closest('.fc-daygrid-day');
+  if (!dayEl) return;
+
+  const dateAttr = dayEl.getAttribute('data-date');
+  if (!dateAttr) return;
+
+  // 如果鼠标移入了待办条目，则交由 onTodoMouseEnter 处理，这里不处理
+  if (event.target.closest('.custom-todo-item')) return;
+
+  const date = dateAttr;
+  const hasTodos = todosMap.value[date] && todosMap.value[date].length > 0;
+
+  if (hasTodos) {
+    // 有待办：延迟2秒弹出浮动编辑器
+    if (hoverTimer.value) clearTimeout(hoverTimer.value);
+    hoverTimer.value = setTimeout(() => {
+      const x = event.clientX;
+      const y = event.clientY;
+      hoverPos.value = { x, y };
+      hoverTodoDate.value = date;
+      hoverTodos.value = todosMap.value[date] || [];
+      showFloatingEditor.value = true;
+    }, 1200);
+  }
+  // 无待办时不额外处理（提示显示由CSS控制，双击即打开编辑器）
+}
+
+function handleDateMouseLeave(event) {
+  if (hoverTimer.value) {
+    clearTimeout(hoverTimer.value);
+    hoverTimer.value = null;
+  }
+}
+
+// 关闭浮动编辑器
+function closeFloatingEditor() {
+  showFloatingEditor.value = false;
+  hoverTodos.value = [];
+  hoverTodoDate.value = '';
+}
+
+async function handleFloatingSave(date, todos) {
+  if (!window.electronAPI?.saveTodos) return;
+  await window.electronAPI.saveTodos(date, todos);
+  closeFloatingEditor();
+  refreshData(); // 刷新后会自动调用 updateTips
+}
+
+// 日历配置
 const calendarOptions = {
   plugins: [dayGridPlugin, interactionPlugin],
   initialView: 'dayGridMonth',
-  locale: zhLocale, 
+  locale: zhLocale,
   headerToolbar: {
     left: 'prev,next today',
     center: 'title',
     right: ''
   },
   height: 'auto',
-  dateClick: (info) => {
-    // 单击也可以处理，但要求双击，我们使用 dateDoubleClick
-  },
-  dateDoubleClick: (info) => {
-    const dateStr = info.dateStr;
-    const todos = todosMap.value[dateStr] || [];
-    openEditor(dateStr, todos);
-  },
-  events: (fetchInfo, successCallback, failureCallback) => {
-    // 动态生成事件：为每个有待办的日期显示标记
+  events: (fetchInfo, successCallback) => {
     const events = [];
     for (const date in todosMap.value) {
-      if (todosMap.value[date].length > 0) {
-        events.push({
-          title: `${todosMap.value[date].length} 项`,
-          start: date,
-          display: 'background',
-          color: 'rgba(255,193,7,0.3)'
+      const todos = todosMap.value[date];
+      if (Array.isArray(todos)) {
+        todos.forEach(todo => {
+          events.push({
+            id: todo.id,
+            title: todo.text,
+            start: date,
+            allDay: true,
+            extendedProps: {
+              todo: todo,
+              date: date
+            }
+          });
         });
       }
     }
     successCallback(events);
   },
   eventContent: (arg) => {
-    // 自定义显示
-    return { html: `<div class="fc-event-badge">${arg.event.title}</div>` };
+    const todo = arg.event.extendedProps.todo;
+    const todoText = arg.event.title;
+    const date = arg.event.extendedProps.date;
+    const div = document.createElement('div');
+    div.className = 'custom-todo-item';
+    div.textContent = todoText;
+    if (todo.completed) {
+      div.style.textDecoration = 'line-through';
+      div.style.opacity = '0.7';
+      div.style.backgroundColor = 'rgba(128, 128, 128, 0.3)';
+    }
+    div.addEventListener('mouseenter', (e) => onTodoMouseEnter(e, date));
+    div.addEventListener('mouseleave', onTodoMouseLeave);
+    return { domNodes: [div] };
+  },
+  eventClick: (info) => {
+    const date = info.event.extendedProps.date;
+    const todos = todosMap.value[date] || [];
+    openEditor(date, todos);
+  },
+  dateClick: (info) => {
+    const clickTime = Date.now();
+    if (!window._lastClick) {
+      window._lastClick = { dateStr: null, time: 0 };
+    }
+    const last = window._lastClick;
+    const isDoubleClick = (info.dateStr === last.dateStr) && (clickTime - last.time < 300);
+    if (isDoubleClick) {
+      const todos = todosMap.value[info.dateStr] || [];
+      openEditor(info.dateStr, todos);
+    }
+    window._lastClick = { dateStr: info.dateStr, time: clickTime };
+  },
+  viewDidMount: (view) => {
+    const titleEl = view.el.querySelector('.fc-toolbar-title');
+    if (!titleEl) return;
+
+    const currentDate = view.getCurrentData().currentDate;
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    titleEl.innerHTML = '';
+    titleEl.style.display = 'flex';
+    titleEl.style.gap = '8px';
+    titleEl.style.cursor = 'default';
+
+    const monthSpan = document.createElement('span');
+    monthSpan.textContent = `${month + 1}月`;
+    monthSpan.style.cursor = 'pointer';
+    monthSpan.style.padding = '0 4px';
+    monthSpan.style.borderRadius = '4px';
+    monthSpan.style.transition = 'background 0.2s';
+    monthSpan.onmouseenter = () => { monthSpan.style.backgroundColor = 'rgba(255,255,255,0.2)'; };
+    monthSpan.onmouseleave = () => { monthSpan.style.backgroundColor = 'transparent'; };
+    monthSpan.onclick = (e) => {
+      e.stopPropagation();
+      const newMonth = prompt('请输入月份（1-12）', month + 1);
+      if (newMonth && !isNaN(newMonth) && newMonth >= 1 && newMonth <= 12) {
+        const calendarApi = fullCalendarRef.value?.getApi();
+        if (calendarApi) {
+          const newDate = new Date(year, parseInt(newMonth) - 1, 1);
+          calendarApi.gotoDate(newDate);
+        }
+      }
+    };
+
+    const yearSpan = document.createElement('span');
+    yearSpan.textContent = `${year}年`;
+    yearSpan.style.cursor = 'pointer';
+    yearSpan.style.padding = '0 4px';
+    yearSpan.style.borderRadius = '4px';
+    yearSpan.style.transition = 'background 0.2s';
+    yearSpan.onmouseenter = () => { yearSpan.style.backgroundColor = 'rgba(255,255,255,0.2)'; };
+    yearSpan.onmouseleave = () => { yearSpan.style.backgroundColor = 'transparent'; };
+    yearSpan.onclick = (e) => {
+      e.stopPropagation();
+      const newYear = prompt('请输入年份（例如 2025）', year);
+      if (newYear && !isNaN(newYear) && newYear.length === 4) {
+        const calendarApi = fullCalendarRef.value?.getApi();
+        if (calendarApi) {
+          const currentDate = calendarApi.getDate();
+          currentDate.setFullYear(parseInt(newYear));
+          calendarApi.gotoDate(currentDate);
+        }
+      }
+    };
+
+    titleEl.appendChild(monthSpan);
+    titleEl.appendChild(yearSpan);
   }
 };
 
-onMounted(async () => {
-  await loadTodos();
-  // 监听主进程提醒触发（可选）
-  window.electronAPI.onReminderTriggered?.((event, data) => {
-    // 可以播放声音或闪烁窗口
-    console.log('提醒触发', data);
-  });
+onMounted(() => {
+  loadTodos();
+  const container = calendarContainer.value;
+  if (container) {
+    container.addEventListener('mouseenter', handleDateMouseEnter);
+    container.addEventListener('mouseleave', handleDateMouseLeave);
+  }
 });
+
+onUnmounted(() => {
+  const container = calendarContainer.value;
+  if (container) {
+    container.removeEventListener('mouseenter', handleDateMouseEnter);
+    container.removeEventListener('mouseleave', handleDateMouseLeave);
+  }
+});
+
+defineExpose({ refreshData });
 </script>
 
 <style lang="scss" scoped>
@@ -94,9 +307,65 @@ onMounted(async () => {
   height: 100%;
   padding: 12px;
   box-sizing: border-box;
+  -webkit-app-region: no-drag;
+  position: relative;
+
   :deep(.fc) {
+    --fc-page-bg-color: transparent;
+    --fc-border-color: rgba(255, 255, 255, 0.3);  // 表格边框颜色
     background: transparent;
     color: white;
+
+    .fc-scrollgrid,
+    .fc-scrollgrid-section,
+    .fc-daygrid-body {
+      background: transparent;
+    }
+
+    .fc-toolbar {
+      -webkit-app-region: drag;
+      cursor: grab;
+      padding: 8px 12px;
+
+      &:active {
+        cursor: grabbing;
+      }
+
+      button, a, .fc-button, .fc-toolbar-chunk button,
+      .fc-toolbar-title span {
+        -webkit-app-region: no-drag;
+        cursor: pointer;
+      }
+
+      .fc-toolbar-title {
+        -webkit-app-region: drag;
+        cursor: grab;
+      }
+    }
+
+    .custom-todo-item {
+      background: rgba(255, 193, 7, 0.2);
+      border-left: 3px solid #ffc107;
+      font-size: 12px;
+      padding: 2px 4px;
+      margin: 1px 0;
+      border-radius: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: background 0.2s;
+
+      &:hover {
+        background: rgba(255, 193, 7, 0.4);
+      }
+    }
+
+    .fc-daygrid-day-events {
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
     .fc-toolbar-title {
       color: white;
     }
@@ -114,6 +383,7 @@ onMounted(async () => {
       &:hover {
         background: rgba(0,0,0,0.5);
       }
+      position: relative; // 为绝对定位的提示提供参考
     }
     .fc-daygrid-day-number {
       color: white;
@@ -124,28 +394,40 @@ onMounted(async () => {
     .fc-day-today {
       background: rgba(255,255,0,0.2) !important;
     }
-    .todo-badge {
-      .fc-daygrid-day-events {
-        text-align: center;
-        .fc-event-badge {
-          background: #ffc107;
-          color: #333;
-          font-size: 12px;
-          border-radius: 12px;
-          padding: 2px 6px;
-          display: inline-block;
-        }
-      }
+
+    .fc-col-header-cell {
+      background: rgba(0, 0, 0, 0.3);
+      border-color: rgba(255, 255, 255, 0.2);
     }
-  }
-  :deep(.fc-col-header-cell) {
-    color: #ffaa00;  // 星期字体颜色设置
-  }
-  :deep(.fc-col-header-cell.fc-day-sat) {
-    color: aquamarine; // 星期六星期天颜色设置
-  }
-  :deep(.fc-col-header-cell.fc-day-sun) {
-    color: aquamarine; // 星期六星期天颜色设置
+    .fc-col-header-cell-cushion {
+      color: white;
+    }
+
+    // 双击创建提示样式
+    .double-click-tip {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      padding: 4px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 1;
+      display: none; // 默认隐藏
+    }
+
+    // 仅无待办且鼠标悬停时显示
+    .fc-daygrid-day.no-todos:hover .double-click-tip {
+      display: block;
+    }
+
+    // 有待办时永远不显示提示
+    .fc-daygrid-day.has-todos .double-click-tip {
+      display: none !important;
+    }
   }
 }
 </style>
