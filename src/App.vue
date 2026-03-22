@@ -6,13 +6,13 @@
       :date="selectedDate"
       :todos="selectedTodos"
       @close="closeEditor"
-      @save="saveTodos"
+      @save="handleSave"
     />
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, provide } from 'vue';
 import Calendar from './components/Calendar.vue';
 import TodoEditor from './components/TodoEditor.vue';
 
@@ -31,7 +31,7 @@ function closeEditor() {
   showEditor.value = false;
 }
 
-function saveTodos(date, todos) {
+function handleSave(date, todos) {
   // 检查 electronAPI 是否存在
   if (!window.electronAPI || !window.electronAPI.saveTodos) {
     console.error('electronAPI.saveTodos 不可用，请检查预加载脚本');
@@ -39,7 +39,6 @@ function saveTodos(date, todos) {
   }
   // 调用主进程保存
   window.electronAPI.saveTodos(date, todos);
-  closeEditor();
   // 刷新日历数据
   if (calendarRef.value) {
     calendarRef.value.refreshData();
@@ -49,7 +48,6 @@ function saveTodos(date, todos) {
 // 暴露方法给 Calendar 组件使用（可通过 provide/inject 或事件）
 // 这里简化：直接在 Calendar 中调用父组件方法，可以通过 emit 或 provide
 // 为了方便，我们将 openEditor 通过 provide 提供给子组件
-import { provide } from 'vue';
 provide('openEditor', openEditor);
 </script>
 

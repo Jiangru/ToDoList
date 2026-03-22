@@ -20,7 +20,7 @@ function createWindow() {
     transparent: true,
     frame: false,
     backgroundColor: '#00000000',  // 背景透明关键
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
