@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.example.desktop-calendar",
-    "productName": "绿能桌面办公",
+    "productName": "绿能桌面日历",
     "directories": {
       "output": "release"
     },
@@ -48,6 +48,13 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "extraResources": [
+      {
+        "from": "public/sound/",
+        "to": "sound/",
+        "filter": ["**/*"]
+      }
+    ]
   }
 }
