@@ -4,37 +4,20 @@
       ref="fullCalendarRef"
       :options="calendarOptions"
     />
-    <!-- 浮动待办编辑器（悬停有待办时显示） -->
-    <TodoEditor
-      v-if="showFloatingEditor"
-      :date="hoverTodoDate"
-      :todos="hoverTodos"
-      :position="hoverPos"
-      @close="closeFloatingEditor"
-      @save="handleFloatingSave"
-    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, inject, nextTick } from 'vue';
+import { ref, onMounted, inject } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import zhLocale from '@fullcalendar/core/locales/zh-cn';
-import TodoEditor from './TodoEditor.vue';
 
 const openEditor = inject('openEditor');
 const todosMap = ref({});
 const fullCalendarRef = ref(null);
 const calendarContainer = ref(null);
-
-// 悬停相关状态（有待办）
-const hoverTimer = ref(null);
-const hoverTodos = ref([]);
-const hoverTodoDate = ref('');
-const hoverPos = ref({ x: 0, y: 0 });
-const showFloatingEditor = ref(false);
 
 // 加载所有待办数据
 async function loadTodos() {
@@ -47,7 +30,6 @@ async function loadTodos() {
   if (fullCalendarRef.value?.getApi()) {
     fullCalendarRef.value.getApi().refetchEvents();
   }
-  // 更新日期格子的提示元素和状态类
   updateTips();
 }
 
@@ -55,7 +37,7 @@ function refreshData() {
   loadTodos();
 }
 
-// 更新所有日期格子：添加提示元素，并根据有无待办设置类
+// 更新日期格子的提示元素和状态类（仅显示“双击创建”提示）
 function updateTips() {
   const dayCells = document.querySelectorAll('.fc-daygrid-day');
   dayCells.forEach(cell => {
@@ -64,7 +46,6 @@ function updateTips() {
 
     const hasTodos = todosMap.value[dateAttr] && todosMap.value[dateAttr].length > 0;
 
-    // 添加/更新状态类
     if (hasTodos) {
       cell.classList.add('has-todos');
       cell.classList.remove('no-todos');
@@ -73,7 +54,6 @@ function updateTips() {
       cell.classList.remove('has-todos');
     }
 
-    // 确保提示元素存在
     let tipEl = cell.querySelector('.double-click-tip');
     if (!tipEl) {
       tipEl = document.createElement('div');
@@ -82,78 +62,6 @@ function updateTips() {
       cell.appendChild(tipEl);
     }
   });
-}
-
-// 鼠标悬停进入待办条目（有待办）
-function onTodoMouseEnter(event, date) {
-  event.stopPropagation();
-  if (hoverTimer.value) clearTimeout(hoverTimer.value);
-  // 延迟2秒弹出浮动编辑器
-  hoverTimer.value = setTimeout(() => {
-    const x = event.clientX;
-    const y = event.clientY;
-    hoverPos.value = { x, y };
-    hoverTodoDate.value = date;
-    hoverTodos.value = todosMap.value[date] || [];
-    showFloatingEditor.value = true;
-  }, 1200);
-}
-
-function onTodoMouseLeave() {
-  if (hoverTimer.value) {
-    clearTimeout(hoverTimer.value);
-    hoverTimer.value = null;
-  }
-}
-
-// 鼠标移入日期格子（包括空白区域）
-function handleDateMouseEnter(event) {
-  const dayEl = event.target.closest('.fc-daygrid-day');
-  if (!dayEl) return;
-
-  const dateAttr = dayEl.getAttribute('data-date');
-  if (!dateAttr) return;
-
-  // 如果鼠标移入了待办条目，则交由 onTodoMouseEnter 处理，这里不处理
-  if (event.target.closest('.custom-todo-item')) return;
-
-  const date = dateAttr;
-  const hasTodos = todosMap.value[date] && todosMap.value[date].length > 0;
-
-  if (hasTodos) {
-    // 有待办：延迟2秒弹出浮动编辑器
-    if (hoverTimer.value) clearTimeout(hoverTimer.value);
-    hoverTimer.value = setTimeout(() => {
-      const x = event.clientX;
-      const y = event.clientY;
-      hoverPos.value = { x, y };
-      hoverTodoDate.value = date;
-      hoverTodos.value = todosMap.value[date] || [];
-      showFloatingEditor.value = true;
-    }, 1200);
-  }
-  // 无待办时不额外处理（提示显示由CSS控制，双击即打开编辑器）
-}
-
-function handleDateMouseLeave(event) {
-  if (hoverTimer.value) {
-    clearTimeout(hoverTimer.value);
-    hoverTimer.value = null;
-  }
-}
-
-// 关闭浮动编辑器
-function closeFloatingEditor() {
-  showFloatingEditor.value = false;
-  hoverTodos.value = [];
-  hoverTodoDate.value = '';
-}
-
-async function handleFloatingSave(date, todos) {
-  if (!window.electronAPI?.saveTodos) return;
-  await window.electronAPI.saveTodos(date, todos);
-  closeFloatingEditor();
-  refreshData(); // 刷新后会自动调用 updateTips
 }
 
 // 日历配置
@@ -191,7 +99,6 @@ const calendarOptions = {
   eventContent: (arg) => {
     const todo = arg.event.extendedProps.todo;
     const todoText = arg.event.title;
-    const date = arg.event.extendedProps.date;
     const div = document.createElement('div');
     div.className = 'custom-todo-item';
     div.textContent = todoText;
@@ -200,8 +107,7 @@ const calendarOptions = {
       div.style.opacity = '0.7';
       div.style.backgroundColor = 'rgba(128, 128, 128, 0.3)';
     }
-    div.addEventListener('mouseenter', (e) => onTodoMouseEnter(e, date));
-    div.addEventListener('mouseleave', onTodoMouseLeave);
+    // 移除鼠标悬停事件，仅保留点击打开编辑器（通过 eventClick 处理）
     return { domNodes: [div] };
   },
   eventClick: (info) => {
@@ -283,19 +189,6 @@ const calendarOptions = {
 
 onMounted(() => {
   loadTodos();
-  const container = calendarContainer.value;
-  if (container) {
-    container.addEventListener('mouseenter', handleDateMouseEnter);
-    container.addEventListener('mouseleave', handleDateMouseLeave);
-  }
-});
-
-onUnmounted(() => {
-  const container = calendarContainer.value;
-  if (container) {
-    container.removeEventListener('mouseenter', handleDateMouseEnter);
-    container.removeEventListener('mouseleave', handleDateMouseLeave);
-  }
 });
 
 defineExpose({ refreshData });
@@ -312,7 +205,7 @@ defineExpose({ refreshData });
 
   :deep(.fc) {
     --fc-page-bg-color: transparent;
-    --fc-border-color: rgba(255, 255, 255, 0.3);  // 表格边框颜色
+    --fc-border-color: rgba(255, 255, 255, 0.3);
     background: transparent;
     color: white;
 
@@ -383,7 +276,7 @@ defineExpose({ refreshData });
       &:hover {
         background: rgba(0,0,0,0.5);
       }
-      position: relative; // 为绝对定位的提示提供参考
+      position: relative;
     }
     .fc-daygrid-day-number {
       color: white;
@@ -403,7 +296,6 @@ defineExpose({ refreshData });
       color: white;
     }
 
-    // 双击创建提示样式
     .double-click-tip {
       position: absolute;
       top: 50%;
@@ -416,15 +308,13 @@ defineExpose({ refreshData });
       white-space: nowrap;
       pointer-events: none;
       z-index: 1;
-      display: none; // 默认隐藏
+      display: none;
     }
 
-    // 仅无待办且鼠标悬停时显示
     .fc-daygrid-day.no-todos:hover .double-click-tip {
       display: block;
     }
 
-    // 有待办时永远不显示提示
     .fc-daygrid-day.has-todos .double-click-tip {
       display: none !important;
     }
