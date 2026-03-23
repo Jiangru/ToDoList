@@ -31,6 +31,11 @@ function initReminder(store, win) {
  * @param {Electron.BrowserWindow} win - 主窗口
  */
 function scheduleReminder(date, todo, reminder, win) {
+  // 如果待办已完成，则不调度任何提醒
+  if (todo.completed) {
+    console.log(`待办 "${todo.text}" 已完成，跳过提醒调度`);
+    return;
+  }
   // 关键修复：严格校验 time 字段
   if (!reminder.time || typeof reminder.time !== 'string' || reminder.time.trim() === '') {
     console.warn(`提醒规则 ${reminder.id} 缺少有效时间，跳过调度`);
@@ -147,6 +152,11 @@ function parseLocalDateTime(str) {
  * @param {Electron.BrowserWindow} win - 主窗口
  */
 function triggerReminder(todo, reminder, win) {
+  // 如果待办已完成，则忽略提醒
+  if (todo.completed) {
+    console.log(`待办 "${todo.text}" 已完成，忽略提醒`);
+    return;
+  }
   // 1. 窗口闪烁
   if (win && !win.isDestroyed()) {
     win.flashFrame(true);
