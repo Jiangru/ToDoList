@@ -1,11 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
-const { initReminder, scheduleReminder, cancelReminder } = require('./reminder.js');
-const fs = require('fs');
-const preloadPath = path.join(__dirname, 'preload.js');
+const { initReminder, scheduleReminder, cancelJobsByDate } = require('./reminder.js');
 
-// 数据存储
 const store = new Store({
   name: 'todos',
   defaults: { todos: {} }
@@ -13,13 +10,50 @@ const store = new Store({
 
 let mainWindow;
 
+// 数据迁移：将旧版单次提醒字段转换为 reminders 数组
+function migrateTodos() {
+  const todosMap = store.get('todos') || {};
+  let changed = false;
+  for (const date in todosMap) {
+    const dayTodos = todosMap[date];
+    if (!Array.isArray(dayTodos)) continue;
+    dayTodos.forEach(todo => {
+      if (todo.reminder && !todo.reminders) {
+        todo.reminders = [{
+          id: `rem_${todo.id}_${Date.now()}`,
+          type: 'single',
+          time: todo.reminder,
+          enabled: true
+        }];
+        delete todo.reminder;
+        changed = true;
+      } else if (!todo.reminders) {
+        todo.reminders = [];
+      }
+    });
+  }
+  if (changed) store.set('todos', todosMap);
+}
+
+// 重新调度某一天的所有待办的提醒
+function rescheduleTodosForDate(date, todos) {
+  cancelJobsByDate(date);          // 取消该日期所有旧任务
+  todos.forEach(todo => {
+    if (todo.reminders && todo.reminders.length) {
+      todo.reminders.forEach(reminder => {
+        scheduleReminder(date, todo, reminder, mainWindow);
+      });
+    }
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 900,
     height: 700,
     transparent: true,
     frame: false,
-    backgroundColor: '#00000000',  // 背景透明关键
+    backgroundColor: '#00000000',
     alwaysOnTop: false,
     skipTaskbar: false,
     webPreferences: {
@@ -29,7 +63,6 @@ function createWindow() {
     }
   });
 
-  // 开发环境加载 Vite 开发服务器
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
@@ -43,6 +76,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  migrateTodos();
   createWindow();
   initReminder(store, mainWindow);
 
@@ -55,29 +89,16 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// IPC 通信：获取所有待办
+// IPC：获取所有待办
 ipcMain.handle('get-todos', () => {
   return store.get('todos');
 });
 
-// IPC 通信：保存某一天的待办列表
+// IPC：保存某一天的待办列表
 ipcMain.handle('save-todos', (event, date, todos) => {
   const allTodos = store.get('todos');
   allTodos[date] = todos;
   store.set('todos', allTodos);
-
-  if (todos && Array.isArray(todos)) {
-    todos.forEach(todo => {
-      if (todo.reminder && !todo.completed) {
-        scheduleReminder(todo.id, todo.reminder, todo.text, mainWindow);
-      } else if (todo.reminder && todo.completed) {
-        cancelReminder(todo.id);
-      }
-    });
-  }
+  rescheduleTodosForDate(date, todos);
   return true;
-});
-
-ipcMain.handle('open-todo-editor', (event, date) => {
-  return date;
 });

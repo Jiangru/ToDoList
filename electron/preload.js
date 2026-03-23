@@ -1,9 +1,13 @@
-// import { contextBridge, ipcRenderer } from 'electron';
 const { contextBridge, ipcRenderer } = require('electron');
-console.log('preload loaded')
+
+console.log('preload loaded');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // 数据操作
   getTodos: () => ipcRenderer.invoke('get-todos'),
   saveTodos: (date, todos) => ipcRenderer.invoke('save-todos', date, todos),
-  openTodoEditor: (date) => ipcRenderer.invoke('open-todo-editor', date)
+
+  // 事件监听（由主进程触发）
+  onPlaySound: (callback) => ipcRenderer.on('play-sound', callback),
+  onMarkTodoComplete: (callback) => ipcRenderer.on('mark-todo-complete', callback)
 });

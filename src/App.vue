@@ -12,11 +12,11 @@
 </template>
 
 <script setup>
-import { ref, provide } from 'vue';
+import { ref, provide, onMounted } from 'vue';
 import Calendar from './components/Calendar.vue';
 import TodoEditor from './components/TodoEditor.vue';
 
-const calendarRef = ref(null);             // 定义 ref
+const calendarRef = ref(null);
 const showEditor = ref(false);
 const selectedDate = ref('');
 const selectedTodos = ref([]);
@@ -31,23 +31,56 @@ function closeEditor() {
   showEditor.value = false;
 }
 
-function handleSave(date, todos) {
-  // 检查 electronAPI 是否存在
+async function handleSave(date, todos) {
   if (!window.electronAPI || !window.electronAPI.saveTodos) {
-    console.error('electronAPI.saveTodos 不可用，请检查预加载脚本');
+    console.error('electronAPI.saveTodos 不可用');
     return;
   }
-  // 调用主进程保存
-  window.electronAPI.saveTodos(date, todos);
+  await window.electronAPI.saveTodos(date, todos);
   // 刷新日历数据
   if (calendarRef.value) {
     calendarRef.value.refreshData();
   }
 }
 
-// 暴露方法给 Calendar 组件使用（可通过 provide/inject 或事件）
-// 这里简化：直接在 Calendar 中调用父组件方法，可以通过 emit 或 provide
-// 为了方便，我们将 openEditor 通过 provide 提供给子组件
+// 监听来自主进程的事件
+onMounted(() => {
+  if (!window.electronAPI) return;
+
+  // 播放声音
+  window.electronAPI.onPlaySound(() => {
+    const audio = new Audio('./sound/reminder.mp3');
+    audio.play().catch(e => console.error('播放声音失败:', e));
+  });
+
+  // 标记待办完成（来自通知的"完成"按钮）
+  window.electronAPI.onMarkTodoComplete(async (event, todoId) => {
+    // 需要遍历所有日期的待办，找到该 todoId 并标记为完成
+    // 获取当前所有待办数据
+    const allTodos = await window.electronAPI.getTodos();
+    let updated = false;
+    for (const date in allTodos) {
+      const dayTodos = allTodos[date];
+      const todoIndex = dayTodos.findIndex(todo => todo.id === todoId);
+      if (todoIndex !== -1) {
+        // 标记为完成
+        dayTodos[todoIndex].completed = true;
+        // 保存该日期的待办
+        await window.electronAPI.saveTodos(date, dayTodos);
+        updated = true;
+        break;
+      }
+    }
+    if (updated) {
+      // 刷新日历
+      if (calendarRef.value) {
+        calendarRef.value.refreshData();
+      }
+    }
+  });
+});
+
+// 暴露方法给子组件
 provide('openEditor', openEditor);
 </script>
 
