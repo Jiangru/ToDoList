@@ -1,5 +1,5 @@
 <template>
-  <!-- 全屏遮罩模式（双击时使用） -->
+  <!-- 全屏遮罩模式 -->
   <div v-if="!position" class="editor-overlay" @click.self="close">
     <div class="editor-card">
       <div class="header">
@@ -7,18 +7,9 @@
         <button class="close-btn" @click="close">✕</button>
       </div>
       <div class="todo-list">
-        <div
-          v-for="(todo, idx) in localTodos"
-          :key="todo.id"
-          class="todo-item-wrapper"
-        >
+        <div v-for="(todo, idx) in localTodos" :key="todo.id" class="todo-item-wrapper">
           <div class="todo-item">
-            <input
-              type="checkbox"
-              v-model="todo.completed"
-              @change="save"
-              class="todo-checkbox"
-            />
+            <input type="checkbox" v-model="todo.completed" @change="save" class="todo-checkbox" />
             <input
               type="text"
               v-model="todo.text"
@@ -28,29 +19,18 @@
               :class="{ completed: todo.completed }"
             />
             <button class="delete-btn" @click="deleteTodo(idx)">删除</button>
-            <button
-              class="reminder-toggle"
-              @click="toggleReminders(idx)"
-              :title="hasReminders(todo) ? '编辑提醒' : '添加提醒'"
-            >
+            <button class="reminder-toggle" @click="toggleReminders(idx)" :title="hasReminders(todo) ? '编辑提醒' : '添加提醒'">
               ⏰
             </button>
           </div>
 
-          <!-- 提醒面板（可展开） -->
           <div v-if="expandedReminderIdx === idx" class="reminders-panel">
             <div class="reminders-header">
               <span>⏰ 提醒设置</span>
-              <button class="close-panel" @click="expandedReminderIdx = null">
-                ✕
-              </button>
+              <button class="close-panel" @click="expandedReminderIdx = null">✕</button>
             </div>
-            <div
-              v-for="(rem, rIdx) in todo.reminders"
-              :key="rem.id"
-              class="reminder-item"
-            >
-              <select v-model="rem.type" class="reminder-type" @change="save">
+            <div v-for="(rem, rIdx) in todo.reminders" :key="rem.id" class="reminder-item">
+              <select v-model="rem.type" @change="handleTypeChange(rem)" class="reminder-type">
                 <option value="single">单次提醒</option>
                 <option value="daily">每天</option>
                 <option value="weekly">每周</option>
@@ -58,6 +38,7 @@
                 <option value="yearly">每年</option>
               </select>
 
+              <!-- 单次提醒：显示 datetime-local -->
               <input
                 v-if="rem.type === 'single'"
                 type="datetime-local"
@@ -65,29 +46,55 @@
                 @change="save"
                 class="reminder-time"
               />
-              <input
-                v-else
-                type="time"
-                v-model="rem.time"
-                @change="save"
-                class="reminder-time"
-                step="60"
-              />
+
+              <!-- 重复提醒：显示时间选择器 + 额外参数 -->
+              <template v-else>
+                <input type="time" v-model="rem.time" @change="save" class="reminder-time" step="60" />
+
+                <!-- 每周：选择星期几 -->
+                <select v-if="rem.type === 'weekly'" v-model="rem.repeatParam" @change="save" class="reminder-param">
+                  <option value="0">周日</option>
+                  <option value="1">周一</option>
+                  <option value="2">周二</option>
+                  <option value="3">周三</option>
+                  <option value="4">周四</option>
+                  <option value="5">周五</option>
+                  <option value="6">周六</option>
+                </select>
+
+                <!-- 每月：选择日期（1-31） -->
+                <input
+                  v-if="rem.type === 'monthly'"
+                  type="number"
+                  v-model="rem.repeatParam"
+                  min="1"
+                  max="31"
+                  step="1"
+                  @change="save"
+                  class="reminder-param"
+                  placeholder="日期"
+                />
+
+                <!-- 每年：选择月-日 -->
+                <div v-if="rem.type === 'yearly'" class="yearly-selector">
+                  <select v-model="rem.repeatParamMonth" @change="updateYearlyParam(rem)" class="reminder-param">
+                    <option v-for="m in 12" :key="m" :value="m">{{ m }}月</option>
+                  </select>
+                  <select v-model="rem.repeatParamDay" @change="updateYearlyParam(rem)" class="reminder-param">
+                    <option v-for="d in 31" :key="d" :value="d">{{ d }}日</option>
+                  </select>
+                </div>
+              </template>
 
               <label class="reminder-enabled">
                 <input type="checkbox" v-model="rem.enabled" @change="save" />
                 启用
               </label>
-              <button class="delete-reminder-btn" @click="deleteReminder(todo, rIdx)">
-                ✖
-              </button>
+              <button class="delete-reminder-btn" @click="deleteReminder(todo, rIdx)">✖</button>
             </div>
-            <button class="add-reminder-btn" @click="addReminder(todo)">
-              + 添加提醒
-            </button>
+            <button class="add-reminder-btn" @click="addReminder(todo)">+ 添加提醒</button>
           </div>
         </div>
-
         <button class="add-btn" @click="addTodo">+ 添加待办</button>
       </div>
       <div class="footer">
@@ -96,63 +103,32 @@
     </div>
   </div>
 
-  <!-- 浮动模式（悬停时使用） -->
-  <div
-    v-else
-    ref="floatingRef"
-    class="editor-floating"
-    :style="{ left: finalLeft + 'px', top: finalTop + 'px' }"
-  >
+  <!-- 浮动模式（略，与全屏模式相同结构，但使用 position 定位） -->
+  <div v-else ref="floatingRef" class="editor-floating" :style="{ left: finalLeft + 'px', top: finalTop + 'px' }">
+    <!-- 内容同上，省略重复代码，实际开发中可复用组件 -->
     <div class="editor-card">
       <div class="header">
         <span>编辑待办 - {{ date }}</span>
         <button class="close-btn" @click="close">✕</button>
       </div>
       <div class="todo-list">
-        <div
-          v-for="(todo, idx) in localTodos"
-          :key="todo.id"
-          class="todo-item-wrapper"
-        >
+        <div v-for="(todo, idx) in localTodos" :key="todo.id" class="todo-item-wrapper">
           <div class="todo-item">
-            <input
-              type="checkbox"
-              v-model="todo.completed"
-              @change="save"
-              class="todo-checkbox"
-            />
-            <input
-              type="text"
-              v-model="todo.text"
-              placeholder="待办内容"
-              @blur="save"
-              class="todo-text"
-              :class="{ completed: todo.completed }"
-            />
+            <input type="checkbox" v-model="todo.completed" @change="save" class="todo-checkbox" />
+            <input type="text" v-model="todo.text" placeholder="待办内容" @blur="save" class="todo-text" :class="{ completed: todo.completed }" />
             <button class="delete-btn" @click="deleteTodo(idx)">删除</button>
-            <button
-              class="reminder-toggle"
-              @click="toggleReminders(idx)"
-              :title="hasReminders(todo) ? '编辑提醒' : '添加提醒'"
-            >
+            <button class="reminder-toggle" @click="toggleReminders(idx)" :title="hasReminders(todo) ? '编辑提醒' : '添加提醒'">
               ⏰
             </button>
           </div>
 
-          <!-- 提醒面板（可展开） -->
           <div v-if="expandedReminderIdx === idx" class="reminders-panel">
             <div class="reminders-header">
               <span>⏰ 提醒设置</span>
-              <button class="close-panel" @click="expandedReminderIdx = null">
-                ✕
-              </button>
+              <button class="close-panel" @click="expandedReminderIdx = null">✕</button>
             </div>
-            <div
-              v-for="(rem, rIdx) in todo.reminders"
-              :key="rem.id"
-              class="reminder-item"
-            >
-              <select v-model="rem.type" class="reminder-type" @change="save">
+            <div v-for="(rem, rIdx) in todo.reminders" :key="rem.id" class="reminder-item">
+              <select v-model="rem.type" @change="handleTypeChange(rem)" class="reminder-type">
                 <option value="single">单次提醒</option>
                 <option value="daily">每天</option>
                 <option value="weekly">每周</option>
@@ -160,36 +136,38 @@
                 <option value="yearly">每年</option>
               </select>
 
-              <input
-                v-if="rem.type === 'single'"
-                type="datetime-local"
-                v-model="rem.time"
-                @change="save"
-                class="reminder-time"
-              />
-              <input
-                v-else
-                type="time"
-                v-model="rem.time"
-                @change="save"
-                class="reminder-time"
-                step="60"
-              />
+              <input v-if="rem.type === 'single'" type="datetime-local" v-model="rem.time" @change="save" class="reminder-time" />
+              <template v-else>
+                <input type="time" v-model="rem.time" @change="save" class="reminder-time" step="60" />
+                <select v-if="rem.type === 'weekly'" v-model="rem.repeatParam" @change="save" class="reminder-param">
+                  <option value="0">周日</option>
+                  <option value="1">周一</option>
+                  <option value="2">周二</option>
+                  <option value="3">周三</option>
+                  <option value="4">周四</option>
+                  <option value="5">周五</option>
+                  <option value="6">周六</option>
+                </select>
+                <input v-if="rem.type === 'monthly'" type="number" v-model="rem.repeatParam" min="1" max="31" step="1" @change="save" class="reminder-param" placeholder="日期" />
+                <div v-if="rem.type === 'yearly'" class="yearly-selector">
+                  <select v-model="rem.repeatParamMonth" @change="updateYearlyParam(rem)" class="reminder-param">
+                    <option v-for="m in 12" :key="m" :value="m">{{ m }}月</option>
+                  </select>
+                  <select v-model="rem.repeatParamDay" @change="updateYearlyParam(rem)" class="reminder-param">
+                    <option v-for="d in 31" :key="d" :value="d">{{ d }}日</option>
+                  </select>
+                </div>
+              </template>
 
               <label class="reminder-enabled">
                 <input type="checkbox" v-model="rem.enabled" @change="save" />
                 启用
               </label>
-              <button class="delete-reminder-btn" @click="deleteReminder(todo, rIdx)">
-                ✖
-              </button>
+              <button class="delete-reminder-btn" @click="deleteReminder(todo, rIdx)">✖</button>
             </div>
-            <button class="add-reminder-btn" @click="addReminder(todo)">
-              + 添加提醒
-            </button>
+            <button class="add-reminder-btn" @click="addReminder(todo)">+ 添加提醒</button>
           </div>
         </div>
-
         <button class="add-btn" @click="addTodo">+ 添加待办</button>
       </div>
       <div class="footer">
@@ -228,7 +206,15 @@ watch(
       text: todo.text || "",
       completed: todo.completed || false,
       reminders: todo.reminders
-        ? todo.reminders.map((r) => ({ ...r }))
+        ? todo.reminders.map((r) => {
+          // 处理 yearly 的拆分存储
+          if (r.type === 'yearly' && r.repeatParam) {
+              const [month, day] = r.repeatParam.split('-');
+              r.repeatParamMonth = parseInt(month);
+              r.repeatParamDay = parseInt(day);
+            }
+            return { ...r };
+          })
         : [],
     }));
   },
@@ -242,18 +228,14 @@ function hasReminders(todo) {
 
 // 切换提醒面板
 function toggleReminders(idx) {
-  if (expandedReminderIdx.value === idx) {
-    expandedReminderIdx.value = null;
-  } else {
-    expandedReminderIdx.value = idx;
-  }
+  expandedReminderIdx.value = expandedReminderIdx.value === idx ? null : idx;
 }
 
 // 添加待办
 function addTodo() {
   localTodos.value.push({
     id: Date.now() + Math.random(),
-    text: "",
+    text: '',
     completed: false,
     reminders: [],
   });
@@ -278,6 +260,7 @@ function addReminder(todo) {
     type: "single",
     time: "",
     enabled: true,
+    repeatParam: null,
   });
   save();
 }
@@ -292,18 +275,45 @@ function deleteReminder(todo, rIdx) {
   save();
 }
 
+// 当提醒类型改变时，初始化默认参数
+function handleTypeChange(rem) {
+  if (rem.type === 'weekly' && rem.repeatParam === undefined) rem.repeatParam = 0;
+  if (rem.type === 'monthly' && rem.repeatParam === undefined) rem.repeatParam = 1;
+  if (rem.type === 'yearly') {
+    if (rem.repeatParamMonth === undefined) rem.repeatParamMonth = 1;
+    if (rem.repeatParamDay === undefined) rem.repeatParamDay = 1;
+    updateYearlyParam(rem);
+  }
+  save();
+}
+
+function updateYearlyParam(rem) {
+  if (rem.repeatParamMonth && rem.repeatParamDay) {
+    rem.repeatParam = `${rem.repeatParamMonth}-${rem.repeatParamDay}`;
+    save();
+  }
+}
+
 // 保存（仅触发保存事件，不关闭编辑器）
 function save() {
   const rawTodos = toRaw(localTodos.value).map((todo) => ({
     id: todo.id,
     text: todo.text,
     completed: todo.completed,
-    reminders: todo.reminders.map((r) => ({
-      id: r.id,
-      type: r.type,
-      time: r.time,
-      enabled: r.enabled,
-    })),
+    reminders: todo.reminders.map((r) => {
+      const { repeatParamMonth, repeatParamDay, ...rest } = r;
+      const reminderData = { ...rest };
+      // 根据类型决定是否保留 repeatParam
+      if (r.type === 'weekly' && r.repeatParam !== undefined) {
+        reminderData.repeatParam = r.repeatParam;
+      } else if (r.type === 'monthly' && r.repeatParam !== undefined) {
+        reminderData.repeatParam = r.repeatParam;
+      } else if (r.type === 'yearly' && r.repeatParam) {
+        reminderData.repeatParam = r.repeatParam;
+      }
+      // 对于单次和每天，不需要 repeatParam，保留原始对象即可
+      return reminderData;
+    }),
   }));
   emit("save", props.date, rawTodos);
 }

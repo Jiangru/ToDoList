@@ -18,6 +18,7 @@ function migrateTodos() {
     const dayTodos = todosMap[date];
     if (!Array.isArray(dayTodos)) continue;
     dayTodos.forEach(todo => {
+      // 旧数据转换
       if (todo.reminder && !todo.reminders) {
         todo.reminders = [{
           id: `rem_${todo.id}_${Date.now()}`,
@@ -29,6 +30,17 @@ function migrateTodos() {
         changed = true;
       } else if (!todo.reminders) {
         todo.reminders = [];
+      } else {
+        // 清理无效提醒（时间为空或 yearly 的 repeatParam 无效）
+        const originalLength = todo.reminders.length;
+        todo.reminders = todo.reminders.filter(rem => {
+          if (!rem.time || rem.time.trim() === '') return false;
+          if (rem.type === 'yearly' && (!rem.repeatParam || typeof rem.repeatParam !== 'string' || !rem.repeatParam.includes('-'))) return false;
+          if (rem.type === 'weekly' && (rem.repeatParam === undefined || rem.repeatParam < 0 || rem.repeatParam > 6)) return false;
+          if (rem.type === 'monthly' && (!rem.repeatParam || rem.repeatParam < 1 || rem.repeatParam > 31)) return false;
+          return true;
+        });
+        if (todo.reminders.length !== originalLength) changed = true;
       }
     });
   }

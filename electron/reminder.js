@@ -31,8 +31,9 @@ function initReminder(store, win) {
  * @param {Electron.BrowserWindow} win - 主窗口
  */
 function scheduleReminder(date, todo, reminder, win) {
-  // 关键修复：检查 time 字段是否有效
-  if (!reminder.time || reminder.time.trim() === '') {
+  // 关键修复：严格校验 time 字段
+  if (!reminder.time || typeof reminder.time !== 'string' || reminder.time.trim() === '') {
+    console.warn(`提醒规则 ${reminder.id} 缺少有效时间，跳过调度`);
     return;
   }
   const jobKey = `${date}_${todo.id}_${reminder.id}`;
@@ -53,7 +54,7 @@ function scheduleReminder(date, todo, reminder, win) {
     }
     rule = dt;
   } else {
-    const cron = reminderToCron(reminder.type, reminder.time);
+    const cron = reminderToCron(reminder.type, reminder.time, reminder.repeatParam);
     if (!cron) return;
     rule = cron;
   }
@@ -65,27 +66,49 @@ function scheduleReminder(date, todo, reminder, win) {
 }
 
 /**
- * 将重复类型转换为 cron 表达式
+ * 生成 cron 表达式
  * @param {string} type - 'daily' | 'weekly' | 'monthly' | 'yearly'
- * @param {string} timeStr - 'HH:MM' 格式的时间字符串
- * @returns {string|null} cron 表达式
+ * @param {string} timeStr - 'HH:MM'
+ * @param {any} repeatParam - 根据类型不同存储：weekly: 0-6 (周日-周六)；monthly: 1-31；yearly: 'MM-DD'
  */
-function reminderToCron(type, timeStr) {
-  const [hour, minute] = timeStr.split(':').map(Number);
+function reminderToCron(type, timeStr, repeatParam) {
+  // 增加防御
+  if (!timeStr || typeof timeStr !== 'string') {
+    console.warn(`提醒时间无效: ${timeStr}`);
+    return null;
+  } else if (type === 'yearly' && !repeatParam) {
+    console.warn(`yearly 提醒缺少重复参数: ${repeatParam}`);
+    return null;
+  }
+  const parts = timeStr.split(':');
+  if (parts.length !== 2) {
+    console.warn(`时间格式错误: ${timeStr}`);
+    return null;
+  }
+  const [hour, minute] = parts.map(Number);
   if (isNaN(hour) || isNaN(minute)) return null;
   const sec = 0;
+
   switch (type) {
     case 'daily':
       return `${sec} ${minute} ${hour} * * *`;
-    case 'weekly':
-      // 每周日 0 点（星期天为 0，星期一为 1，依此类推）
-      return `${sec} ${minute} ${hour} * * 0`;
-    case 'monthly':
-      // 每月 1 号
-      return `${sec} ${minute} ${hour} 1 * *`;
-    case 'yearly':
-      // 每年 1 月 1 日
-      return `${sec} ${minute} ${hour} 1 1 *`;
+    case 'weekly': {
+      const dayOfWeek = repeatParam;
+      if (dayOfWeek === undefined || dayOfWeek < 0 || dayOfWeek > 6) return null;
+      return `${sec} ${minute} ${hour} * * ${dayOfWeek}`;
+    }
+    case 'monthly': {
+      const dayOfMonth = repeatParam;
+      if (!dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31) return null;
+      return `${sec} ${minute} ${hour} ${dayOfMonth} * *`;
+    }
+    case 'yearly': {
+      // 关键修复：确保 repeatParam 存在且为字符串
+      if (!repeatParam || typeof repeatParam !== 'string') return null;
+      const [month, day] = repeatParam.split('-').map(Number);
+      if (!month || !day || month < 1 || month > 12 || day < 1 || day > 31) return null;
+      return `${sec} ${minute} ${hour} ${day} ${month} *`;
+    }
     default:
       return null;
   }
@@ -97,10 +120,23 @@ function reminderToCron(type, timeStr) {
  * @returns {Date}
  */
 function parseLocalDateTime(str) {
+  // 防御：确保 str 是有效的非空字符串
+  if (!str || typeof str !== 'string' || str.trim() === '') {
+    return new Date(NaN); // 返回无效日期
+  }
+  // 检查是否包含 'T'
+  if (!str.includes('T')) {
+    return new Date(NaN);
+  }
   const [datePart, timePart] = str.split('T');
+  if (!datePart || !timePart) {
+    return new Date(NaN);
+  }
   const [year, month, day] = datePart.split('-').map(Number);
   const [hour, minute] = timePart.split(':').map(Number);
-  // 注意：月份从 0 开始
+  if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour) || isNaN(minute)) {
+    return new Date(NaN);
+  }
   return new Date(year, month - 1, day, hour, minute);
 }
 
@@ -175,11 +211,12 @@ function cancelJobsByDate(date) {
 
 /**
  * 取消一个特定的提醒任务
+ * @param {string} date - 日期字符串，例如 '2023-10-01'
  * @param {number|string} todoId - 待办ID
  * @param {string} reminderId - 提醒规则ID
  */
-function cancelReminder(todoId, reminderId) {
-  const jobKey = `${todoId}_${reminderId}`;
+function cancelReminder(date, todoId, reminderId) {
+  const jobKey = `${date}_${todoId}_${reminderId}`;
   if (jobs.has(jobKey)) {
     jobs.get(jobKey).cancel();
     jobs.delete(jobKey);
@@ -190,8 +227,6 @@ module.exports = {
   initReminder,
   scheduleReminder,
   cancelReminder,
-  // 我们也可以将 jobs 导出以便 main.js 访问
-  getJobs: () => jobs,
   // 取消所有任务
   cancelJobsByDate
 };
