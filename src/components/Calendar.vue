@@ -256,7 +256,29 @@ defineExpose({ refreshData });
 
     .fc-daygrid-day-events {
       max-height: 80px;
+      overflow-y: hidden;          // 默认隐藏滚动条
+      transition: overflow-y 0.2s;
+    }
+
+    // 鼠标悬停时显示滚动条
+    .fc-daygrid-day:hover .fc-daygrid-day-events {
       overflow-y: auto;
+    }
+
+    // 自定义滚动条样式（可选，更美观）
+    .fc-daygrid-day-events::-webkit-scrollbar {
+      width: 4px;
+    }
+    .fc-daygrid-day-events::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+    }
+    .fc-daygrid-day-events::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 2px;
+    }
+    .fc-daygrid-day-events::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.5);
     }
 
     .fc-toolbar-title {

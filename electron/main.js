@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { initReminder, scheduleReminder, cancelJobsByDate } = require('./reminder.js');
@@ -9,6 +9,7 @@ const store = new Store({
 });
 
 let mainWindow;
+let tray = null;
 
 // 数据迁移：将旧版单次提醒字段转换为 reminders 数组
 function migrateTodos() {
@@ -59,6 +60,52 @@ function rescheduleTodosForDate(date, todos) {
   });
 }
 
+// 创建系统托盘
+function createTray() {
+  // 托盘图标，支持 .png 或 .ico
+  const iconPath = path.join(__dirname, '../public/icon.ico');
+  const trayIcon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示日历',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+        }
+      }
+    },
+    {
+      label: '隐藏日历',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.hide();
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setToolTip('绿能桌面日历');
+  tray.setContextMenu(contextMenu);
+
+  // 左键单击切换显示/隐藏
+  tray.on('click', () => {
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+    }
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 900,
@@ -67,7 +114,7 @@ function createWindow() {
     frame: false,
     backgroundColor: '#00000000',
     alwaysOnTop: false,
-    skipTaskbar: false,
+    skipTaskbar: true,   // 防止出现在任务栏中
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -81,6 +128,15 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  // 窗口关闭时，隐藏到托盘而不是退出
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+    return false;
+  });
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show();
@@ -99,6 +155,15 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// 退出应用时，标记为正在退出，允许正常关闭窗口并清除托盘
+app.on('before-quit', () => {
+  app.isQuitting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 // IPC：获取所有待办

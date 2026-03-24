@@ -283,7 +283,25 @@ function close() {
 .todo-list {
   padding: 16px;
   max-height: 500px;
-  overflow-y: auto;
+  overflow-y: hidden;
+  &:hover {
+    overflow-y: auto;
+  }
+  /* 自定义滚动条样式（与日历格子保持一致） */
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
 }
 
 .todo-item-wrapper {
@@ -310,12 +328,19 @@ function close() {
 
   .todo-text {
     flex: 2;
-    background: #3a3a3c;
+    background: transparent;           /* 与卡片背景一致 */
+    border-radius: 0;                  /* 直角 */
     border: none;
     padding: 6px 10px;
     border-radius: 6px;
-    color: white;
+    color: #f4f4f5;
     font-size: 14px;
+    transition: all 0.2s;
+
+     &:focus {
+      outline: none;       /* 聚焦时金色边框，可提示位置 */
+      background: rgba(255, 193, 7, 0.05);
+    }
 
     &.completed {
       text-decoration: line-through;

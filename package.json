@@ -39,7 +39,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico"
+      "icon": "public/iconV1.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -47,7 +47,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "public/iconV1.ico",
+  "uninstallerIcon": "public/iconV1.ico",
+  "installerHeaderIcon": "public/iconV1.ico"
     },
     "extraResources": [
       {
