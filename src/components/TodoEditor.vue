@@ -9,14 +9,15 @@
         <div v-for="(todo, idx) in localTodos" :key="todo.id" class="todo-item-wrapper">
           <div class="todo-item">
             <input type="checkbox" v-model="todo.completed" @change="save" class="todo-checkbox" />
-            <input
-              type="text"
+            <textarea
               v-model="todo.text"
               placeholder="待办内容"
               @blur="save"
+              @input="autoResize($event, idx)"
               class="todo-text"
               :class="{ completed: todo.completed }"
-            />
+              rows="1"
+            ></textarea>
             <button class="delete-btn" @click="deleteTodo(idx)" title="删除待办">🗑️</button>
             <button
               class="reminder-toggle"
@@ -25,33 +26,36 @@
             >
               ⏰
             </button>
-            <button class="remark-btn" @click="startEditRemark(idx)" title="添加/编辑备注">
-              📝
-            </button>
           </div>
 
-          <!-- 备注区域 -->
-          <div class="remark-area" v-if="todo.isEditingRemark || todo.remark">
-            <div v-if="!todo.isEditingRemark" class="remark-display">
-              <span
-                class="remark-text"
-                :title="todo.remark"
-                @dblclick="startEditRemark(idx)"
-              >{{ todo.remark }}</span>
+          <!-- 备注列表区域 -->
+          <div class="remarks-container">
+            <div class="remarks-header">
+              <span>📝 备注</span>
+              <button class="add-remark-btn" @click="addRemark(todo, idx)">+ 添加备注</button>
             </div>
-            <input
-              v-else
-              type="text"
-              v-model="todo.tempRemark"
-              placeholder="请输入备注"
-              @blur="saveRemark(todo, idx)"
-              @keyup.enter="saveRemark(todo, idx)"
-              class="remark-input"
-              ref="remarkInput"
-            />
+            <div v-if="todo.remarks && todo.remarks.length" class="remarks-list">
+              <div v-for="(rem, rIdx) in todo.remarks" :key="rem.id" class="remark-item">
+                <div v-if="!rem.isEditing" class="remark-display" @dblclick="startEditRemark(todo, idx, rIdx)">
+                  <span class="remark-text" :title="rem.text">{{ rem.text }}</span>
+                  <button class="delete-remark-btn" @click.stop="deleteRemark(todo, rIdx)" title="删除备注">✖</button>
+                </div>
+                <input
+                  v-else
+                  type="text"
+                  v-model="rem.tempText"
+                  placeholder="请输入备注"
+                  @blur="saveRemark(todo, rIdx, $event)"
+                  @keyup.enter="saveRemark(todo, rIdx, $event, true)"
+                  class="remark-input"
+                  :ref="el => setRemarkInputRef(idx, rIdx, el)"
+                />
+              </div>
+            </div>
+            <div v-else class="remarks-empty">暂无备注</div>
           </div>
 
-          <!-- 提醒面板 -->
+          <!-- 提醒面板（不变） -->
           <div v-if="expandedReminderIdx === idx" class="reminders-panel">
             <div class="reminders-header">
               <span>⏰ 提醒设置</span>
@@ -138,7 +142,7 @@ const emit = defineEmits(["close", "save"]);
 
 const localTodos = ref([]);
 const expandedReminderIdx = ref(null);
-const remarkInput = ref(null);
+const remarkInputRefs = ref({}); // 存储备注输入框引用
 
 watch(
   () => props.todos,
@@ -150,9 +154,9 @@ watch(
       completed: todo.completed || false,
       createdAt: todo.createdAt || new Date().toISOString(),
       completedAt: todo.completedAt || null,
-      remark: todo.remark || "",
-      isEditingRemark: false,
-      tempRemark: "",
+      remarks: Array.isArray(todo.remarks)
+        ? todo.remarks.map(r => ({ ...r, isEditing: false, tempText: r.text }))
+        : (todo.remark ? [{ id: Date.now() + Math.random(), text: todo.remark, isEditing: false, tempText: todo.remark }] : []),
       reminders: todo.reminders
         ? todo.reminders.map((r) => {
             if (r.type === 'yearly' && r.repeatParam) {
@@ -164,9 +168,21 @@ watch(
           })
         : [],
     }));
+    // 初始化所有 textarea 高度
+    nextTick(() => {
+      document.querySelectorAll('.todo-text').forEach((el, i) => {
+        if (el && localTodos.value[i]) autoResizeTextarea(el);
+      });
+    });
   },
   { immediate: true, deep: true }
 );
+
+function setRemarkInputRef(todoIdx, remIdx, el) {
+  if (!el) return;
+  if (!remarkInputRefs.value[todoIdx]) remarkInputRefs.value[todoIdx] = {};
+  remarkInputRefs.value[todoIdx][remIdx] = el;
+}
 
 function hasReminders(todo) {
   return todo.reminders && todo.reminders.length > 0;
@@ -183,10 +199,12 @@ function addTodo() {
     completed: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
-    remark: '',
-    isEditingRemark: false,
-    tempRemark: '',
+    remarks: [],
     reminders: [],
+  });
+  nextTick(() => {
+    const newTextarea = document.querySelector('.todo-list .todo-text:last-child');
+    if (newTextarea) autoResizeTextarea(newTextarea);
   });
 }
 
@@ -238,25 +256,70 @@ function updateYearlyParam(rem) {
   }
 }
 
-// 备注编辑相关
-function startEditRemark(idx) {
-  const todo = localTodos.value[idx];
-  todo.isEditingRemark = true;
-  todo.tempRemark = todo.remark || '';
+// 自动调整 textarea 高度
+function autoResize(event, idx) {
+  const target = event.target;
+  autoResizeTextarea(target);
+  save(); // 实时保存
+}
+
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+// 备注操作
+function addRemark(todo, todoIdx) {
+  const newId = Date.now() + Math.random();
+  const newRemark = {
+    id: newId,
+    text: '',
+    isEditing: true,
+    tempText: '',
+  };
+  todo.remarks.push(newRemark);
   nextTick(() => {
-    const inputs = document.querySelectorAll('.remark-input');
-    if (inputs[idx]) inputs[idx].focus();
+    const input = remarkInputRefs.value[todoIdx]?.[todo.remarks.length - 1];
+    if (input) input.focus();
   });
 }
 
-function saveRemark(todo, idx) {
-  const newRemark = todo.tempRemark.trim();
-  if (newRemark !== todo.remark) {
-    todo.remark = newRemark;
-    save();
+function deleteRemark(todo, rIdx) {
+  todo.remarks.splice(rIdx, 1);
+  save();
+}
+
+function startEditRemark(todo, todoIdx, rIdx) {
+  const remark = todo.remarks[rIdx];
+  remark.isEditing = true;
+  remark.tempText = remark.text;
+  nextTick(() => {
+    const input = remarkInputRefs.value[todoIdx]?.[rIdx];
+    if (input) input.focus();
+  });
+}
+
+function saveRemark(todo, rIdx, event, fromEnter = false) {
+  const remark = todo.remarks[rIdx];
+  if (!remark) return;
+
+  if (event) event.stopPropagation();
+
+  const newText = remark.tempText.trim();
+  if (newText === '') {
+    // 如果内容为空，删除该备注
+    todo.remarks.splice(rIdx, 1);
+  } else if (newText !== remark.text) {
+    remark.text = newText;
+    save(); // 仅当有变化时保存
   }
-  todo.isEditingRemark = false;
-  todo.tempRemark = '';
+  remark.isEditing = false;
+  remark.tempText = '';
+
+  if (fromEnter && event) {
+    event.target.blur();
+  }
 }
 
 function save() {
@@ -267,6 +330,8 @@ function save() {
     } else if (!todo.completed && todo.completedAt) {
       todo.completedAt = null;
     }
+    // 清理备注内部编辑状态字段
+    todo.remarks = todo.remarks.map(({ id, text }) => ({ id, text }));
   });
 
   const rawTodos = toRaw(localTodos.value).map((todo) => ({
@@ -275,7 +340,7 @@ function save() {
     completed: todo.completed,
     createdAt: todo.createdAt,
     completedAt: todo.completedAt,
-    remark: todo.remark,
+    remarks: todo.remarks,
     reminders: todo.reminders.map((r) => {
       const { repeatParamMonth, repeatParamDay, ...rest } = r;
       const reminderData = { ...rest };
@@ -379,10 +444,11 @@ function close() {
 .todo-item {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
   width: 100%;
 
   .todo-checkbox {
+    margin-top: 6px;
     width: 18px;
     height: 18px;
     cursor: pointer;
@@ -391,69 +457,117 @@ function close() {
   .todo-text {
     flex: 2;
     background: transparent;
-    border-radius: 0;
     border: none;
     padding: 6px 10px;
     border-radius: 6px;
     color: #f4f4f5;
     font-size: 14px;
+    line-height: 1.4;
+    resize: none;
+    overflow-y: hidden;
     transition: all 0.2s;
+    font-family: inherit;
+
     &:focus {
       outline: none;
       background: rgba(255, 193, 7, 0.05);
     }
+
     &.completed {
       text-decoration: line-through;
       opacity: 0.7;
     }
   }
 
-  .delete-btn, .reminder-toggle,.remark-btn {
+  .delete-btn, .reminder-toggle {
     background: none;
     border: none;
     border-radius: 4px;
     padding: 4px 6px;
     cursor: pointer;
     font-size: 14px;
+    margin-top: 2px;
     &:hover {
       background: #4a4a4c;
     }
   }
 }
 
-.remark-area {
+.remarks-container {
   margin-left: 28px;
   margin-top: 8px;
-  margin-bottom: 4px;
-  .remark-display {
-    .remark-text {
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.7);
-      padding: 2px 6px;
+  .remarks-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: #ffc107;
+    .add-remark-btn {
+      background: none;
+      border: 1px solid #5e5e5e;
       border-radius: 4px;
-      display: inline-block;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      padding: 2px 6px;
       cursor: pointer;
+      font-size: 10px;
+      color: #8bc34a;
       &:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: #4a4a4c;
       }
     }
   }
-  .remark-input {
-    width: 100%;
-    background: #2c2c3a;
-    border: 1px solid #ffc107;
-    border-radius: 0;
-    padding: 4px 6px;
-    color: #f4f4f5;
-    font-size: 10px;
-    &:focus {
-      outline: none;
-      border-color: #ffc107;
+  .remarks-list {
+    .remark-item {
+      margin-bottom: 4px;
+      .remark-display {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        .remark-text {
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.7);
+          background: rgba(255, 255, 255, 0.1);
+          padding: 2px 6px;
+          border-radius: 4px;
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          cursor: pointer;
+          &:hover {
+            background: rgba(255, 255, 255, 0.2);
+          }
+        }
+        .delete-remark-btn {
+          background: none;
+          border: none;
+          color: #e74c3c;
+          cursor: pointer;
+          font-size: 12px;
+          &:hover {
+            color: #ff6b6f;
+          }
+        }
+      }
+      .remark-input {
+        width: 100%;
+        background: #2c2c3a;
+        border: 1px solid #ffc107;
+        border-radius: 0;
+        padding: 4px 6px;
+        color: #f4f4f5;
+        font-size: 10px;
+        &:focus {
+          outline: none;
+          border-color: #ffc107;
+        }
+      }
     }
+  }
+  .remarks-empty {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    padding: 4px 0;
   }
 }
 

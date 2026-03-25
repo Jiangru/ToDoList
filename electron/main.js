@@ -25,8 +25,18 @@ function migrateTodos() {
         todo.createdAt = new Date().toISOString();
         changed = true;
       }
-      if (!todo.remark) {
-        todo.remark = '';
+      // 备注迁移：将旧 remark 转为 remarks 数组
+      if (todo.remark && !todo.remarks) {
+        todo.remarks = [{ id: Date.now() + Math.random(), text: todo.remark }];
+        delete todo.remark;
+        changed = true;
+      } else if (!todo.remarks) {
+        todo.remarks = [];
+        changed = true;
+      }
+      // 确保 remarks 是数组
+      if (!Array.isArray(todo.remarks)) {
+        todo.remarks = [];
         changed = true;
       }
       // 旧数据转换

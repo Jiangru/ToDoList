@@ -4,12 +4,23 @@
       ref="fullCalendarRef"
       :options="calendarOptions"
     />
-    <button class="export-btn" @click="exportToExcel">📊 导出 Excel</button>
+    <!-- 导出控制区域 -->
+    <div class="export-controls">
+      <select v-model="exportYear" class="year-select">
+        <option value="">全部年份</option>
+        <option v-for="year in yearOptions" :key="year" :value="year">{{ year }}年</option>
+      </select>
+      <select v-model="exportMonth" class="month-select">
+        <option value="">全部月份</option>
+        <option v-for="m in 12" :key="m" :value="m">{{ m }}月</option>
+      </select>
+      <button class="export-btn" @click="exportToExcel">📊 导出 Excel</button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue';
+import { ref, onMounted, inject, computed } from 'vue';
 import { formatDateTime } from '../utils/common.js';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -20,6 +31,19 @@ const openEditor = inject('openEditor');
 const todosMap = ref({});
 const fullCalendarRef = ref(null);
 const calendarContainer = ref(null);
+
+// 导出选项
+const exportYear = ref('');
+const exportMonth = ref('');
+// 年份选项：从数据中提取所有出现的年份
+const yearOptions = computed(() => {
+  const years = new Set();
+  for (const date in todosMap.value) {
+    const year = date.split('-')[0];
+    if (year) years.add(year);
+  }
+  return Array.from(years).sort((a,b) => b - a); // 降序，最新的在前
+});
 
 // 加载所有待办数据
 async function loadTodos() {
@@ -101,7 +125,6 @@ const calendarOptions = {
   eventContent: (arg) => {
     const todo = arg.event.extendedProps.todo;
     const todoText = arg.event.title;
-    const remark = todo.remark || '';
     const container = document.createElement('div');
     container.className = 'custom-todo-item';
 
@@ -113,10 +136,16 @@ const calendarOptions = {
     }
     container.appendChild(titleSpan);
 
-    if (remark) {
+    // 显示备注数量（如有）
+    if (todo.remarks && todo.remarks.length > 0) {
+      const remarkCountSpan = document.createElement('span');
+      remarkCountSpan.className = 'remark-count';
+      remarkCountSpan.textContent = `📝 ${todo.remarks.length}条备注`;
+      container.appendChild(remarkCountSpan);
+    } else if (todo.remark) {
       const remarkSpan = document.createElement('span');
       remarkSpan.className = 'todo-remark';
-      remarkSpan.textContent = remark;
+      remarkSpan.textContent = todo.remark;
       container.appendChild(remarkSpan);
     }
 
@@ -199,17 +228,31 @@ const calendarOptions = {
   }
 };
 
+// 导出函数（根据选择的年月过滤）
 async function exportToExcel() {
   const allTodos = [];
   for (const date in todosMap.value) {
+    // 根据日期过滤
+    const [year, month] = date.split('-');
+    if (exportYear.value && exportYear.value !== year) continue;
+    if (exportMonth.value && parseInt(exportMonth.value) !== parseInt(month)) continue;
+
     const dayTodos = todosMap.value[date];
     if (Array.isArray(dayTodos)) {
       dayTodos.forEach(todo => {
+        // 处理备注：优先使用 remarks 数组，若无则兼容旧 remark 字符串
+        let remarkText = '';
+        if (todo.remarks && todo.remarks.length > 0) {
+          remarkText = todo.remarks.map(r => `【${r.text}】`).join('\n');
+        } else if (todo.remark) {
+          remarkText = `【${todo.remark}】`;
+        }
+
         allTodos.push({
           text: todo.text,
-          createdAt: formatDateTime(todo.createdAt),   // 格式化
-          completedAt: formatDateTime(todo.completedAt), // 格式化
-          remark: todo.remark
+          createdAt: formatDateTime(todo.createdAt),
+          completedAt: formatDateTime(todo.completedAt),
+          remark: remarkText
         });
       });
     }
@@ -297,16 +340,14 @@ defineExpose({ refreshData });
 
     .fc-daygrid-day-events {
       max-height: 80px;
-      overflow-y: hidden;          // 默认隐藏滚动条
+      overflow-y: hidden;
       transition: overflow-y 0.2s;
     }
 
-    // 鼠标悬停时显示滚动条
     .fc-daygrid-day:hover .fc-daygrid-day-events {
       overflow-y: auto;
     }
 
-    // 自定义滚动条样式（可选，更美观）
     .fc-daygrid-day-events::-webkit-scrollbar {
       width: 4px;
     }
@@ -382,56 +423,45 @@ defineExpose({ refreshData });
       display: none !important;
     }
   }
-  :deep(.custom-todo-item) {
-    display: flex;
-    flex-direction: column;
-    background: rgba(255, 193, 7, 0.2);
-    border-left: 3px solid #ffc107;
-    font-size: 12px;
-    padding: 2px 4px;
-    margin: 1px 0;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background 0.2s;
-    white-space: normal;
-    word-break: break-word;
 
-    &:hover {
-      background: rgba(255, 193, 7, 0.4);
-    }
-
-    .todo-title {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .todo-remark {
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.7);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-  }
-  .export-btn {
+  .export-controls {
     position: absolute;
     top: 20px;
     right: 20px;
     z-index: 10;
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
+    display: flex;
+    gap: 8px;
     -webkit-app-region: no-drag;
-    &:hover {
-      background: rgba(255, 255, 255, 0.3);
+
+    select {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      &:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+      option {
+        background: #2c2c2e;
+        color: white;
+      }
+    }
+
+    .export-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      &:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
     }
   }
-
 }
 </style>
