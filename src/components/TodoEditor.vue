@@ -17,14 +17,7 @@
               class="todo-text"
               :class="{ completed: todo.completed }"
             />
-            <input
-              type="text"
-              v-model="todo.remark"
-              placeholder="备注"
-              @blur="save"
-              class="todo-remark"
-            />
-            <button class="delete-btn" @click="deleteTodo(idx)">删除</button>
+            <button class="delete-btn" @click="deleteTodo(idx)" title="删除待办">🗑️</button>
             <button
               class="reminder-toggle"
               @click="toggleReminders(idx)"
@@ -32,8 +25,33 @@
             >
               ⏰
             </button>
+            <button class="remark-btn" @click="startEditRemark(idx)" title="添加/编辑备注">
+              📝
+            </button>
           </div>
 
+          <!-- 备注区域 -->
+          <div class="remark-area" v-if="todo.isEditingRemark || todo.remark">
+            <div v-if="!todo.isEditingRemark" class="remark-display">
+              <span
+                class="remark-text"
+                :title="todo.remark"
+                @dblclick="startEditRemark(idx)"
+              >{{ todo.remark }}</span>
+            </div>
+            <input
+              v-else
+              type="text"
+              v-model="todo.tempRemark"
+              placeholder="请输入备注"
+              @blur="saveRemark(todo, idx)"
+              @keyup.enter="saveRemark(todo, idx)"
+              class="remark-input"
+              ref="remarkInput"
+            />
+          </div>
+
+          <!-- 提醒面板 -->
           <div v-if="expandedReminderIdx === idx" class="reminders-panel">
             <div class="reminders-header">
               <span>⏰ 提醒设置</span>
@@ -48,7 +66,6 @@
                 <option value="yearly">每年</option>
               </select>
 
-              <!-- 单次提醒：显示 datetime-local -->
               <input
                 v-if="rem.type === 'single'"
                 type="datetime-local"
@@ -57,11 +74,9 @@
                 class="reminder-time"
               />
 
-              <!-- 重复提醒：显示时间选择器 + 额外参数 -->
               <template v-else>
                 <input type="time" v-model="rem.time" @change="save" class="reminder-time" step="60" />
 
-                <!-- 每周：选择星期几 -->
                 <select v-if="rem.type === 'weekly'" v-model="rem.repeatParam" @change="save" class="reminder-param">
                   <option value="0">周日</option>
                   <option value="1">周一</option>
@@ -72,7 +87,6 @@
                   <option value="6">周六</option>
                 </select>
 
-                <!-- 每月：选择日期（1-31） -->
                 <input
                   v-if="rem.type === 'monthly'"
                   type="number"
@@ -85,7 +99,6 @@
                   placeholder="日期"
                 />
 
-                <!-- 每年：选择月-日 -->
                 <div v-if="rem.type === 'yearly'" class="yearly-selector">
                   <select v-model="rem.repeatParamMonth" @change="updateYearlyParam(rem)" class="reminder-param">
                     <option v-for="m in 12" :key="m" :value="m">{{ m }}月</option>
@@ -115,7 +128,7 @@
 </template>
 
 <script setup>
-import { ref, watch, toRaw } from "vue";
+import { ref, watch, toRaw, nextTick } from "vue";
 
 const props = defineProps({
   date: String,
@@ -125,6 +138,7 @@ const emit = defineEmits(["close", "save"]);
 
 const localTodos = ref([]);
 const expandedReminderIdx = ref(null);
+const remarkInput = ref(null);
 
 watch(
   () => props.todos,
@@ -136,7 +150,9 @@ watch(
       completed: todo.completed || false,
       createdAt: todo.createdAt || new Date().toISOString(),
       completedAt: todo.completedAt || null,
-      remark: todo.remark || "",   // 新增备注字段
+      remark: todo.remark || "",
+      isEditingRemark: false,
+      tempRemark: "",
       reminders: todo.reminders
         ? todo.reminders.map((r) => {
             if (r.type === 'yearly' && r.repeatParam) {
@@ -167,7 +183,9 @@ function addTodo() {
     completed: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
-    remark: '',    // 备注初始为空
+    remark: '',
+    isEditingRemark: false,
+    tempRemark: '',
     reminders: [],
   });
 }
@@ -220,6 +238,27 @@ function updateYearlyParam(rem) {
   }
 }
 
+// 备注编辑相关
+function startEditRemark(idx) {
+  const todo = localTodos.value[idx];
+  todo.isEditingRemark = true;
+  todo.tempRemark = todo.remark || '';
+  nextTick(() => {
+    const inputs = document.querySelectorAll('.remark-input');
+    if (inputs[idx]) inputs[idx].focus();
+  });
+}
+
+function saveRemark(todo, idx) {
+  const newRemark = todo.tempRemark.trim();
+  if (newRemark !== todo.remark) {
+    todo.remark = newRemark;
+    save();
+  }
+  todo.isEditingRemark = false;
+  todo.tempRemark = '';
+}
+
 function save() {
   // 处理完成时间
   localTodos.value.forEach(todo => {
@@ -229,13 +268,14 @@ function save() {
       todo.completedAt = null;
     }
   });
+
   const rawTodos = toRaw(localTodos.value).map((todo) => ({
     id: todo.id,
     text: todo.text,
     completed: todo.completed,
     createdAt: todo.createdAt,
     completedAt: todo.completedAt,
-    remark: todo.remark,   // 包含备注
+    remark: todo.remark,
     reminders: todo.reminders.map((r) => {
       const { repeatParamMonth, repeatParamDay, ...rest } = r;
       const reminderData = { ...rest };
@@ -311,7 +351,6 @@ function close() {
   &:hover {
     overflow-y: auto;
   }
-  /* 自定义滚动条样式（与日历格子保持一致） */
   &::-webkit-scrollbar {
     width: 4px;
   }
@@ -332,7 +371,6 @@ function close() {
   margin-bottom: 16px;
   border-bottom: 1px solid #3a3a3c;
   padding-bottom: 8px;
-
   &:last-child {
     border-bottom: none;
   }
@@ -352,48 +390,69 @@ function close() {
 
   .todo-text {
     flex: 2;
-    background: transparent;           /* 与卡片背景一致 */
-    border-radius: 0;                  /* 直角 */
+    background: transparent;
+    border-radius: 0;
     border: none;
     padding: 6px 10px;
     border-radius: 6px;
     color: #f4f4f5;
     font-size: 14px;
     transition: all 0.2s;
-
-     &:focus {
-      outline: none;       /* 聚焦时金色边框，可提示位置 */
+    &:focus {
+      outline: none;
       background: rgba(255, 193, 7, 0.05);
     }
-
     &.completed {
       text-decoration: line-through;
       opacity: 0.7;
     }
   }
 
-  .delete-btn {
-    background: #e74c3c;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
-    color: white;
-    cursor: pointer;
-    font-size: 12px;
-  }
-
-  .reminder-toggle {
+  .delete-btn, .reminder-toggle,.remark-btn {
     background: none;
-    border: 1px solid #5e5e5e;
+    border: none;
     border-radius: 4px;
     padding: 4px 6px;
     cursor: pointer;
     font-size: 14px;
-    background: #3a3a3c;
-    color: #ffc107;
-
     &:hover {
       background: #4a4a4c;
+    }
+  }
+}
+
+.remark-area {
+  margin-left: 28px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  .remark-display {
+    .remark-text {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.7);
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+    }
+  }
+  .remark-input {
+    width: 100%;
+    background: #2c2c3a;
+    border: 1px solid #ffc107;
+    border-radius: 0;
+    padding: 4px 6px;
+    color: #f4f4f5;
+    font-size: 10px;
+    &:focus {
+      outline: none;
+      border-color: #ffc107;
     }
   }
 }
@@ -405,7 +464,6 @@ function close() {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   border-left: 3px solid #ffc107;
-
   .reminders-header {
     display: flex;
     justify-content: space-between;
@@ -414,27 +472,23 @@ function close() {
     font-size: 13px;
     font-weight: bold;
     color: #ffc107;
-
     .close-panel {
       background: none;
       border: none;
       color: #aaa;
       cursor: pointer;
       font-size: 14px;
-
       &:hover {
         color: white;
       }
     }
   }
-
   .reminder-item {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
     align-items: center;
     flex-wrap: wrap;
-
     .reminder-type,
     .reminder-time,
     .reminder-param {
@@ -445,7 +499,6 @@ function close() {
       color: white;
       font-size: 12px;
     }
-
     .reminder-enabled {
       display: flex;
       align-items: center;
@@ -456,7 +509,6 @@ function close() {
         margin: 0;
       }
     }
-
     .delete-reminder-btn {
       background: #e74c3c;
       border: none;
@@ -467,7 +519,6 @@ function close() {
       font-size: 12px;
     }
   }
-
   .add-reminder-btn {
     background: #4caf50;
     border: none;
@@ -481,6 +532,14 @@ function close() {
   }
 }
 
+.footer {
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #3a3a3c;
+}
+
 .add-btn {
   background: transparent;
   border: 0px;
@@ -489,18 +548,9 @@ function close() {
   color: white;
   cursor: pointer;
   transition: all 0.2s;
-
   &:hover {
     background: rgba(255, 255, 255, 0.1);
   }
-}
-
-.footer {
-  padding: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top: 1px solid #3a3a3c;
 }
 
 .save-btn {
@@ -511,22 +561,8 @@ function close() {
   color: white;
   cursor: pointer;
   transition: all 0.2s;
-
   &:hover {
     background: rgba(255, 255, 255, 0.1);
-  }
-}
-.todo-remark {
-  width: 120px;
-  background: transparent;
-  border: 1px solid #2a2a2a;
-  border-radius: 0;
-  padding: 4px 6px;
-  color: #ccc;
-  font-size: 12px;
-  &:focus {
-    outline: none;
-    border-color: #ffc107;
   }
 }
 </style>
