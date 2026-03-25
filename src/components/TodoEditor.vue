@@ -17,6 +17,13 @@
               class="todo-text"
               :class="{ completed: todo.completed }"
             />
+            <input
+              type="text"
+              v-model="todo.remark"
+              placeholder="备注"
+              @blur="save"
+              class="todo-remark"
+            />
             <button class="delete-btn" @click="deleteTodo(idx)">删除</button>
             <button
               class="reminder-toggle"
@@ -127,6 +134,9 @@ watch(
       id: todo.id,
       text: todo.text || "",
       completed: todo.completed || false,
+      createdAt: todo.createdAt || new Date().toISOString(),
+      completedAt: todo.completedAt || null,
+      remark: todo.remark || "",   // 新增备注字段
       reminders: todo.reminders
         ? todo.reminders.map((r) => {
             if (r.type === 'yearly' && r.repeatParam) {
@@ -155,6 +165,9 @@ function addTodo() {
     id: Date.now() + Math.random(),
     text: '',
     completed: false,
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    remark: '',    // 备注初始为空
     reminders: [],
   });
 }
@@ -208,10 +221,21 @@ function updateYearlyParam(rem) {
 }
 
 function save() {
+  // 处理完成时间
+  localTodos.value.forEach(todo => {
+    if (todo.completed && !todo.completedAt) {
+      todo.completedAt = new Date().toISOString();
+    } else if (!todo.completed && todo.completedAt) {
+      todo.completedAt = null;
+    }
+  });
   const rawTodos = toRaw(localTodos.value).map((todo) => ({
     id: todo.id,
     text: todo.text,
     completed: todo.completed,
+    createdAt: todo.createdAt,
+    completedAt: todo.completedAt,
+    remark: todo.remark,   // 包含备注
     reminders: todo.reminders.map((r) => {
       const { repeatParamMonth, repeatParamDay, ...rest } = r;
       const reminderData = { ...rest };
@@ -490,6 +514,19 @@ function close() {
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
+  }
+}
+.todo-remark {
+  width: 120px;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 0;
+  padding: 4px 6px;
+  color: #ccc;
+  font-size: 12px;
+  &:focus {
+    outline: none;
+    border-color: #ffc107;
   }
 }
 </style>

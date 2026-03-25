@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { initReminder, scheduleReminder, cancelJobsByDate } = require('./reminder.js');
+const XLSX = require('xlsx');  // 新增
+const fs = require('fs');       // 新增
 
 const store = new Store({
   name: 'todos',
@@ -19,6 +21,14 @@ function migrateTodos() {
     const dayTodos = todosMap[date];
     if (!Array.isArray(dayTodos)) continue;
     dayTodos.forEach(todo => {
+      if (!todo.createdAt) {
+        todo.createdAt = new Date().toISOString();
+        changed = true;
+      }
+      if (!todo.remark) {
+        todo.remark = '';
+        changed = true;
+      }
       // 旧数据转换
       if (todo.reminder && !todo.reminders) {
         todo.reminders = [{
@@ -178,4 +188,35 @@ ipcMain.handle('save-todos', (event, date, todos) => {
   store.set('todos', allTodos);
   rescheduleTodosForDate(date, todos);
   return true;
+});
+
+// IPC：导出 Excel
+ipcMain.handle('export-to-excel', async (event, todosData) => {
+  try {
+    const data = todosData.map((item, index) => ({
+      '序号': index + 1,
+      '待办事项': item.text,
+      '创建时间': item.createdAt || '',
+      '完成时间': item.completedAt || '',
+      '备注': item.remark || ''
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '待办事项');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    const { filePath } = await dialog.showSaveDialog({
+      title: '保存待办事项',
+      defaultPath: `待办事项_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      filters: [{ name: 'Excel 文件', extensions: ['xlsx'] }]
+    });
+    if (filePath) {
+      fs.writeFileSync(filePath, buffer);
+      return { success: true, path: filePath };
+    }
+    return { success: false, canceled: true };
+  } catch (error) {
+    console.error('导出失败', error);
+    return { success: false, error: error.message };
+  }
 });

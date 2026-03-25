@@ -4,11 +4,13 @@
       ref="fullCalendarRef"
       :options="calendarOptions"
     />
+    <button class="export-btn" @click="exportToExcel">📊 导出 Excel</button>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, inject } from 'vue';
+import { formatDateTime } from '../utils/common.js';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -99,16 +101,26 @@ const calendarOptions = {
   eventContent: (arg) => {
     const todo = arg.event.extendedProps.todo;
     const todoText = arg.event.title;
-    const div = document.createElement('div');
-    div.className = 'custom-todo-item';
-    div.textContent = todoText;
+    const remark = todo.remark || '';
+    const container = document.createElement('div');
+    container.className = 'custom-todo-item';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'todo-title';
+    titleSpan.textContent = todoText;
     if (todo.completed) {
-      div.style.textDecoration = 'line-through';
-      div.style.opacity = '0.7';
-      div.style.backgroundColor = 'rgba(128, 128, 128, 0.3)';
+      titleSpan.style.textDecoration = 'line-through';
     }
-    // 移除鼠标悬停事件，仅保留点击打开编辑器（通过 eventClick 处理）
-    return { domNodes: [div] };
+    container.appendChild(titleSpan);
+
+    if (remark) {
+      const remarkSpan = document.createElement('span');
+      remarkSpan.className = 'todo-remark';
+      remarkSpan.textContent = remark;
+      container.appendChild(remarkSpan);
+    }
+
+    return { domNodes: [container] };
   },
   eventClick: (info) => {
     const date = info.event.extendedProps.date;
@@ -186,6 +198,35 @@ const calendarOptions = {
     titleEl.appendChild(yearSpan);
   }
 };
+
+async function exportToExcel() {
+  const allTodos = [];
+  for (const date in todosMap.value) {
+    const dayTodos = todosMap.value[date];
+    if (Array.isArray(dayTodos)) {
+      dayTodos.forEach(todo => {
+        allTodos.push({
+          text: todo.text,
+          createdAt: formatDateTime(todo.createdAt),   // 格式化
+          completedAt: formatDateTime(todo.completedAt), // 格式化
+          remark: todo.remark
+        });
+      });
+    }
+  }
+  if (allTodos.length === 0) {
+    alert('没有待办事项可导出');
+    return;
+  }
+  const result = await window.electronAPI.exportExcel(allTodos);
+  if (result.success) {
+    alert(`导出成功！文件已保存至：${result.path}`);
+  } else if (result.canceled) {
+    // 用户取消，不提示
+  } else {
+    alert('导出失败：' + (result.error || '未知错误'));
+  }
+}
 
 onMounted(() => {
   loadTodos();
@@ -341,5 +382,56 @@ defineExpose({ refreshData });
       display: none !important;
     }
   }
+  :deep(.custom-todo-item) {
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 193, 7, 0.2);
+    border-left: 3px solid #ffc107;
+    font-size: 12px;
+    padding: 2px 4px;
+    margin: 1px 0;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: normal;
+    word-break: break-word;
+
+    &:hover {
+      background: rgba(255, 193, 7, 0.4);
+    }
+
+    .todo-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .todo-remark {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.7);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+  }
+  .export-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    -webkit-app-region: no-drag;
+    &:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+  }
+
 }
 </style>
