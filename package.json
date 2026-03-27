@@ -1,6 +1,6 @@
 {
   "name": "desktop-calendar",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "蒋如意开发的一款办公桌面日历代办软件",
   "main": "electron/main.js",
   "scripts": {

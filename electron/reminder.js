@@ -3,6 +3,7 @@ const { Notification } = require('electron');
 
 // 存储所有调度任务，key 为 `${todoId}_${reminderId}`
 const jobs = new Map();
+let globalStore = null; // 用于在 triggerReminder 中获取数据
 
 /**
  * 初始化所有提醒（应用启动时调用）
@@ -10,6 +11,7 @@ const jobs = new Map();
  * @param {Electron.BrowserWindow} win - 主窗口对象
  */
 function initReminder(store, win) {
+  globalStore = store; // 保存 store 引用，供 triggerReminder 使用
   const todosMap = store.get('todos') || {};
   for (const date in todosMap) {
     const todos = todosMap[date];
@@ -26,6 +28,7 @@ function initReminder(store, win) {
 
 /**
  * 调度一个提醒规则
+ * @param {string} date - 待办所在日期 YYYY-MM-DD
  * @param {Object} todo - 待办对象
  * @param {Object} reminder - 提醒规则对象
  * @param {Electron.BrowserWindow} win - 主窗口
@@ -157,6 +160,34 @@ function triggerReminder(todo, reminder, win) {
     console.log(`待办 "${todo.text}" 已完成，忽略提醒`);
     return;
   }
+
+  // 获取待办所在的日期和序号
+  let dateStr = '';
+  let index = -1;
+  if (globalStore) {
+    const todosMap = globalStore.get('todos') || {};
+    for (const date in todosMap) {
+      const dayTodos = todosMap[date];
+      if (Array.isArray(dayTodos)) {
+        const foundIndex = dayTodos.findIndex(t => t.id === todo.id);
+        if (foundIndex !== -1) {
+          dateStr = date;
+          index = foundIndex + 1; // 序号从1开始
+          break;
+        }
+      }
+    }
+  }
+
+  // 构建通知标题和内容
+  const title = '待办提醒';
+  let body = todo.text;
+  if (dateStr && index !== -1) {
+    body = `【${dateStr} 第${index}条】 ${todo.text}`;
+  } else {
+    body = `【待办】 ${todo.text}`;
+  }
+
   // 1. 窗口闪烁
   if (win && !win.isDestroyed()) {
     win.flashFrame(true);
@@ -172,8 +203,8 @@ function triggerReminder(todo, reminder, win) {
 
   // 3. 创建系统通知（带两个操作按钮）
   const notification = new Notification({
-    title: '待办提醒',
-    body: todo.text,
+    title,
+    body,
     silent: false,
     actions: [
       { type: 'button', text: '稍后提醒' },
@@ -237,6 +268,5 @@ module.exports = {
   initReminder,
   scheduleReminder,
   cancelReminder,
-  // 取消所有任务
   cancelJobsByDate
 };
