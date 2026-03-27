@@ -4,7 +4,6 @@
       ref="fullCalendarRef"
       :options="calendarOptions"
     />
-    <!-- 导出控制区域 -->
     <div class="export-controls">
       <select v-model="exportYear" class="year-select">
         <option value="">全部年份</option>
@@ -35,14 +34,13 @@ const calendarContainer = ref(null);
 // 导出选项
 const exportYear = ref('');
 const exportMonth = ref('');
-// 年份选项：从数据中提取所有出现的年份
 const yearOptions = computed(() => {
   const years = new Set();
   for (const date in todosMap.value) {
     const year = date.split('-')[0];
     if (year) years.add(year);
   }
-  return Array.from(years).sort((a,b) => b - a); // 降序，最新的在前
+  return Array.from(years).sort((a,b) => b - a);
 });
 
 // 加载所有待办数据
@@ -63,23 +61,30 @@ function refreshData() {
   loadTodos();
 }
 
-// 更新日期格子的提示元素和状态类（仅显示“双击创建”提示）
+// 更新日期格子的提示元素和状态类，并高亮有未完成待办的日期
 function updateTips() {
   const dayCells = document.querySelectorAll('.fc-daygrid-day');
   dayCells.forEach(cell => {
     const dateAttr = cell.getAttribute('data-date');
     if (!dateAttr) return;
 
-    const hasTodos = todosMap.value[dateAttr] && todosMap.value[dateAttr].length > 0;
+    const dayTodos = todosMap.value[dateAttr];
+    const hasTodos = dayTodos && dayTodos.length > 0;
+    const hasIncomplete = hasTodos && dayTodos.some(todo => !todo.completed);
 
-    if (hasTodos) {
+    // 添加/更新状态类
+    if (hasIncomplete) {
+      cell.classList.add('has-incomplete-todos');
+      cell.classList.remove('has-todos', 'no-todos');
+    } else if (hasTodos) {
       cell.classList.add('has-todos');
-      cell.classList.remove('no-todos');
+      cell.classList.remove('has-incomplete-todos', 'no-todos');
     } else {
       cell.classList.add('no-todos');
-      cell.classList.remove('has-todos');
+      cell.classList.remove('has-todos', 'has-incomplete-todos');
     }
 
+    // 确保提示元素存在
     let tipEl = cell.querySelector('.double-click-tip');
     if (!tipEl) {
       tipEl = document.createElement('div');
@@ -228,11 +233,9 @@ const calendarOptions = {
   }
 };
 
-// 导出函数（根据选择的年月过滤）
 async function exportToExcel() {
   const allTodos = [];
   for (const date in todosMap.value) {
-    // 根据日期过滤
     const [year, month] = date.split('-');
     if (exportYear.value && exportYear.value !== year) continue;
     if (exportMonth.value && parseInt(exportMonth.value) !== parseInt(month)) continue;
@@ -240,14 +243,12 @@ async function exportToExcel() {
     const dayTodos = todosMap.value[date];
     if (Array.isArray(dayTodos)) {
       dayTodos.forEach(todo => {
-        // 处理备注：优先使用 remarks 数组，若无则兼容旧 remark 字符串
         let remarkText = '';
         if (todo.remarks && todo.remarks.length > 0) {
           remarkText = todo.remarks.map(r => `【${r.text}】`).join('\n');
         } else if (todo.remark) {
           remarkText = `【${todo.remark}】`;
         }
-
         allTodos.push({
           text: todo.text,
           createdAt: formatDateTime(todo.createdAt),
@@ -316,7 +317,6 @@ defineExpose({ refreshData });
 
       .fc-toolbar-title {
         -webkit-app-region: drag;
-        transform: translateX(-100px);
         cursor: grab;
       }
     }
@@ -375,6 +375,8 @@ defineExpose({ refreshData });
         background: rgba(255,255,255,0.3);
       }
     }
+
+    /* 日期格子基础样式 */
     .fc-daygrid-day {
       background: rgba(0,0,0,0.3);
       border-color: rgba(255,255,255,0.2);
@@ -382,7 +384,25 @@ defineExpose({ refreshData });
         background: rgba(0,0,0,0.5);
       }
       position: relative;
+      transition: background 0.2s;
     }
+
+    /* 有未完成待办的日期格子高亮 */
+    .fc-daygrid-day.has-incomplete-todos {
+      background: rgba(255, 80, 80, 0.3);  /* 浅红色背景，醒目但不刺眼 */
+      &:hover {
+        background: rgba(255, 80, 80, 0.5);
+      }
+    }
+
+    /* 全部待办都已完成的日期格子（可选） */
+    .fc-daygrid-day.has-todos {
+      background: rgba(0, 128, 0, 0.2);  /* 浅绿色，表示已完成全部 */
+      &:hover {
+        background: rgba(0, 128, 0, 0.4);
+      }
+    }
+
     .fc-daygrid-day-number {
       color: white;
     }
@@ -420,7 +440,8 @@ defineExpose({ refreshData });
       display: block;
     }
 
-    .fc-daygrid-day.has-todos .double-click-tip {
+    .fc-daygrid-day.has-todos .double-click-tip,
+    .fc-daygrid-day.has-incomplete-todos .double-click-tip {
       display: none !important;
     }
   }
