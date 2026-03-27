@@ -27,6 +27,11 @@
               ⏰
             </button>
           </div>
+          <!-- 新增：最后提醒摘要 -->
+          <div v-if="todo.reminders && todo.reminders.length > 0" class="reminder-summary">
+            <span class="reminder-summary-icon">⏰</span>
+            <span class="reminder-summary-text">最后提醒：{{ getLastReminderText(todo) }}</span>
+          </div>
 
           <!-- 备注列表区域 -->
           <div class="remarks-container">
@@ -362,6 +367,47 @@ function saveAndClose() {
   close();
 }
 
+function getLastReminderText(todo) {
+  if (!todo.reminders || todo.reminders.length === 0) return '';
+  const lastReminder = todo.reminders[todo.reminders.length - 1];
+  if (!lastReminder) return '';
+  return formatReminderText(lastReminder);
+}
+
+function formatReminderText(reminder) {
+  if (!reminder) return '';
+  const typeMap = {
+    single: '单次提醒',
+    daily: '每天',
+    weekly: '每周',
+    monthly: '每月',
+    yearly: '每年'
+  };
+  const typeText = typeMap[reminder.type] || reminder.type;
+  let timeText = '';
+  if (reminder.type === 'single') {
+    timeText = reminder.time ? reminder.time.replace('T', ' ') : '';
+  } else {
+    timeText = reminder.time || '';
+    if (reminder.type === 'weekly') {
+      const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      const dayOfWeek = reminder.repeatParam;
+      if (dayOfWeek !== undefined && weekdays[dayOfWeek]) {
+        timeText = `${weekdays[dayOfWeek]} ${timeText}`;
+      }
+    } else if (reminder.type === 'monthly') {
+      const day = reminder.repeatParam;
+      if (day) timeText = `${day}日 ${timeText}`;
+    } else if (reminder.type === 'yearly') {
+      if (reminder.repeatParam) {
+        const [month, day] = reminder.repeatParam.split('-');
+        timeText = `${month}月${day}日 ${timeText}`;
+      }
+    }
+  }
+  return `${typeText} ${timeText}`.trim();
+}
+
 function close() {
   emit("close");
 }
@@ -490,6 +536,31 @@ function close() {
     &:hover {
       background: #4a4a4c;
     }
+  }
+}
+
+.reminder-summary {
+  margin-left: 28px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  background: rgba(255, 193, 7, 0.1);
+  border-left: 2px solid #ffc107;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #ffc107;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .reminder-summary-icon {
+    font-size: 12px;
+  }
+
+  .reminder-summary-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
