@@ -316,6 +316,7 @@ defineExpose({ refreshData });
 
       .fc-toolbar-title {
         -webkit-app-region: drag;
+        transform: translateX(-100px);
         cursor: grab;
       }
     }
