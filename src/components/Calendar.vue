@@ -14,6 +14,7 @@
         <option v-for="m in 12" :key="m" :value="m">{{ m }}月</option>
       </select>
       <button class="export-btn" @click="exportToExcel">📊 导出 Excel</button>
+      <button class="export-btn" @click="hideToTray" title="最小化到托盘">🔽</button>
     </div>
   </div>
 </template>
@@ -269,6 +270,14 @@ async function exportToExcel() {
     // 用户取消，不提示
   } else {
     alert('导出失败：' + (result.error || '未知错误'));
+  }
+}
+
+function hideToTray() {
+  if (window.electronAPI && window.electronAPI.hideWindow) {
+    window.electronAPI.hideWindow();
+  } else {
+    console.error('electronAPI.hideWindow 不可用');
   }
 }
 

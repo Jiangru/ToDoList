@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 事件监听（由主进程触发）
   onPlaySound: (callback) => ipcRenderer.on('play-sound', callback),
   onMarkTodoComplete: (callback) => ipcRenderer.on('mark-todo-complete', callback),
-  exportExcel: (todosData) => ipcRenderer.invoke('export-to-excel', todosData)  // 导出 Excel 文件
+  // 导出 Excel 文件
+  exportExcel: (todosData) => ipcRenderer.invoke('export-to-excel', todosData),
+  // 隐藏主窗口到托盘
+  hideWindow: () => ipcRenderer.invoke('hide-window')
 });
