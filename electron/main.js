@@ -83,7 +83,7 @@ function rescheduleTodosForDate(date, todos) {
 // 创建系统托盘
 function createTray() {
   // 托盘图标，支持 .png 或 .ico
-  const iconPath = path.join(__dirname, '../public/icon.ico');
+  const iconPath = path.join(__dirname, '../public/iconV1.ico');
   const trayIcon = nativeImage.createFromPath(iconPath);
   tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
   
@@ -167,6 +167,7 @@ app.whenReady().then(() => {
   migrateTodos();
   createWindow();
   initReminder(store, mainWindow);
+  createTray();  // 创建系统托盘
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -189,6 +190,12 @@ app.on('before-quit', () => {
 // IPC：获取所有待办
 ipcMain.handle('get-todos', () => {
   return store.get('todos');
+});
+
+ipcMain.handle('hide-window', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
 });
 
 // IPC：保存某一天的待办列表
