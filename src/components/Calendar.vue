@@ -13,7 +13,26 @@
         <option value="">全部月份</option>
         <option v-for="m in 12" :key="m" :value="m">{{ m }}月</option>
       </select>
-      <button class="export-btn" @click="exportToExcel">📊 导出 Excel</button>
+      <button class="export-btn" @click="showIncompleteTodos" title="未完成待办">📋</button>
+      <button class="export-btn" @click="exportToExcel" title="导出 Excel">📊</button>
+    </div>
+    <div v-if="showTodoModal" class="modal-overlay" @click.self="showTodoModal = false">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span>未完成待办事项</span>
+          <button class="close-modal-btn" @click="showTodoModal = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div v-if="incompleteTodos.length === 0" class="empty-tip">暂无未完成待办</div>
+          <div v-else class="todo-list-modal">
+            <div v-for="item in incompleteTodos" :key="item.todo.id" class="todo-modal-item" @click="openTodoEditor(item.date, item.todo.id)">
+              <span class="todo-date">{{ item.date }}</span>
+              <span class="todo-index">第{{ item.index }}条</span>
+              <span class="todo-text">{{ item.todo.text }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -30,6 +49,9 @@ const openEditor = inject('openEditor');
 const todosMap = ref({});
 const fullCalendarRef = ref(null);
 const calendarContainer = ref(null);
+// 模态框状态
+const showTodoModal = ref(false);
+const incompleteTodos = ref([]);
 
 // 导出选项
 const exportYear = ref('');
@@ -55,6 +77,42 @@ async function loadTodos() {
     fullCalendarRef.value.getApi().refetchEvents();
   }
   updateTips();
+}
+
+// 加载所有未完成待办
+async function loadIncompleteTodos() {
+  if (!window.electronAPI?.getTodos) return;
+  const data = await window.electronAPI.getTodos();
+  const result = [];
+  for (const date in data) {
+    const todos = data[date];
+    if (Array.isArray(todos)) {
+      todos.forEach((todo, idx) => {
+        if (!todo.completed) {
+          result.push({
+            date: date,
+            todo: todo,
+            index: idx + 1, // 序号从1开始
+          });
+        }
+      });
+    }
+  }
+  incompleteTodos.value = result;
+}
+
+// 显示模态框
+function showIncompleteTodos() {
+  loadIncompleteTodos(); // 每次打开时刷新数据
+  showTodoModal.value = true;
+}
+
+// 点击待办项，打开编辑器并定位
+function openTodoEditor(date, todoId) {
+  // 获取该日期的所有待办（从 todosMap 中取）
+  const todos = todosMap.value[date] || [];
+  openEditor(date, todos, todoId);
+  showTodoModal.value = false; // 关闭模态框
 }
 
 function refreshData() {
@@ -485,5 +543,96 @@ defineExpose({ refreshData });
       }
     }
   }
+}
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  -webkit-app-region: no-drag;
+}
+
+.modal-card {
+  width: 500px;
+  max-width: 90vw;
+  background: #2c2c2e;
+  border-radius: 12px;
+  overflow: hidden;
+  color: white;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #1c1c1e;
+  border-bottom: 1px solid #3a3a3c;
+}
+
+.close-modal-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.todo-list-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-modal-item {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .todo-date {
+    font-size: 12px;
+    color: #ffc107;
+    font-weight: bold;
+  }
+  .todo-index {
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .todo-text {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.empty-tip {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 20px;
 }
 </style>

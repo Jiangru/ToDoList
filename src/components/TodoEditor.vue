@@ -6,7 +6,7 @@
         <button class="close-btn" @click="close">✕</button>
       </div>
       <div class="todo-list">
-        <div v-for="(todo, idx) in localTodos" :key="todo.id" class="todo-item-wrapper">
+        <div v-for="(todo, idx) in localTodos" :key="todo.id" class="todo-item-wrapper" :data-todo-id="todo.id">
           <div class="todo-item">
             <input type="checkbox" v-model="todo.completed" @change="save" class="todo-checkbox" />
             <textarea
@@ -142,6 +142,7 @@ import { ref, watch, toRaw, nextTick } from "vue";
 const props = defineProps({
   date: String,
   todos: Array,
+  selectedTodoId: String,
 });
 const emit = defineEmits(["close", "save"]);
 
@@ -182,6 +183,24 @@ watch(
   },
   { immediate: true, deep: true }
 );
+
+// 监听 selectedTodoId 变化，滚动到指定待办
+watch(() => props.selectedTodoId, (newId) => {
+  if (newId) scrollToTodo(newId);
+}, { immediate: true });
+
+function scrollToTodo(todoId) {
+  nextTick(() => {
+    const todoElement = document.querySelector(`.todo-item-wrapper[data-todo-id="${todoId}"]`);
+    if (todoElement) {
+      todoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      todoElement.classList.add('highlight-todo');
+      setTimeout(() => {
+        todoElement.classList.remove('highlight-todo');
+      }, 2000);
+    }
+  });
+}
 
 function setRemarkInputRef(todoIdx, remIdx, el) {
   if (!el) return;
@@ -414,6 +433,10 @@ function close() {
 </script>
 
 <style lang="scss" scoped>
+.highlight-todo {
+  background-color: rgba(255, 193, 7, 0.3);
+  transition: background-color 0.5s;
+}
 .editor-overlay {
   position: fixed;
   top: 0;

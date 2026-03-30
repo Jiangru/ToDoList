@@ -5,6 +5,7 @@
       v-if="showEditor"
       :date="selectedDate"
       :todos="selectedTodos"
+      :selected-todo-id="selectedTodoId"
       @close="closeEditor"
       @save="handleSave"
     />
@@ -20,15 +21,18 @@ const calendarRef = ref(null);
 const showEditor = ref(false);
 const selectedDate = ref('');
 const selectedTodos = ref([]);
+const selectedTodoId = ref(null);
 
-function openEditor(date, todos) {
+function openEditor(date, todos, todoId) {
   selectedDate.value = date;
   selectedTodos.value = todos;
+  selectedTodoId.value = todoId; // 存储要选中的 todo id
   showEditor.value = true;
 }
 
 function closeEditor() {
   showEditor.value = false;
+  selectedTodoId.value = null; // 重置
 }
 
 async function handleSave(date, todos) {
