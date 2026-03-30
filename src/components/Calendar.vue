@@ -15,6 +15,7 @@
       </select>
       <button class="export-btn" @click="showIncompleteTodos" title="未完成待办">📋</button>
       <button class="export-btn" @click="exportToExcel" title="导出 Excel">📊</button>
+      <button class="export-btn" @click="hideToTray" title="最小化到托盘">🔽</button>
     </div>
     <div v-if="showTodoModal" class="modal-overlay" @click.self="showTodoModal = false">
       <div class="modal-card">
@@ -33,7 +34,6 @@
           </div>
         </div>
       </div>
-      <button class="export-btn" @click="hideToTray" title="最小化到托盘">🔽</button>
     </div>
   </div>
 </template>
