@@ -83,9 +83,18 @@ function rescheduleTodosForDate(date, todos) {
 // 创建系统托盘
 function createTray() {
   // 托盘图标，支持 .png 或 .ico
-  const iconPath = path.join(__dirname, '../public/iconV1.ico');
+  const iconPath = process.env.NODE_ENV === 'development'
+    ? path.join(__dirname, '../public/app.ico')
+    : path.join(process.resourcesPath, 'public/app.ico');
   const trayIcon = nativeImage.createFromPath(iconPath);
-  tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+  if (trayIcon.isEmpty()) {
+    console.error('托盘图标加载失败，使用备选图标');
+    // 备选方案：使用 base64 图标
+    const fallback = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVQ4y2NkoBAwUqifYWBgYGRgYGBgYGBgYGAoFAAAHgAAlz7KawAAAABJRU5ErkJggg==');
+    tray = new Tray(fallback.resize({ width: 16, height: 16 }));
+  } else {
+    tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+  }
   
   const contextMenu = Menu.buildFromTemplate([
     {

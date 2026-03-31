@@ -1,6 +1,6 @@
 {
   "name": "desktop-calendar",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "蒋如意开发的一款办公桌面日历代办软件",
   "main": "electron/main.js",
   "scripts": {
@@ -40,7 +40,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/iconV1.ico"
+      "icon": "public/app.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -49,9 +49,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
-      "installerIcon": "public/iconV1.ico",
-      "uninstallerIcon": "public/iconV1.ico",
-      "installerHeaderIcon": "public/iconV1.ico",
+      "installerIcon": "public/app.ico",
+      "uninstallerIcon": "public/app.ico",
+      "installerHeaderIcon": "public/app.ico",
       "include": "installer.nsh"
     },
     "extraResources": [
