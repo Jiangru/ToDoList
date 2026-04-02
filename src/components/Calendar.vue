@@ -39,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, inject, computed } from 'vue';
+import { ref, onMounted, inject, computed, nextTick, watch } from 'vue';
 import { formatDateTime } from '../utils/common.js';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -64,6 +64,31 @@ const yearOptions = computed(() => {
     if (year) years.add(year);
   }
   return Array.from(years).sort((a,b) => b - a);
+});
+
+// 监听导出年份和月份变化，自动跳转日历视图
+watch([exportYear, exportMonth], ([year, month]) => {
+  const calendarApi = fullCalendarRef.value?.getApi();
+  if (!calendarApi) return;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-11
+
+  let targetYear, targetMonth;
+
+  if (!year && !month) {
+    // 全部年份和月份 -> 当前年月
+    targetYear = currentYear;
+    targetMonth = currentMonth;
+  } else {
+    // 有年份或月份
+    targetYear = year ? parseInt(year) : currentYear;
+    targetMonth = month ? (parseInt(month) - 1) : currentMonth;
+  }
+
+  const targetDate = new Date(targetYear, targetMonth, 1);
+  calendarApi.gotoDate(targetDate);
 });
 
 // 加载所有待办数据
@@ -266,6 +291,7 @@ const calendarOptions = {
       }
     };
 
+    // 年份元素
     const yearSpan = document.createElement('span');
     yearSpan.textContent = `${year}年`;
     yearSpan.style.cursor = 'pointer';
@@ -289,6 +315,13 @@ const calendarOptions = {
 
     titleEl.appendChild(monthSpan);
     titleEl.appendChild(yearSpan);
+  },
+  // 新增：日期范围变化时重新应用样式
+  datesSet: () => {
+    // 使用 nextTick 确保 DOM 已更新
+    nextTick(() => {
+      updateTips();
+    });
   }
 };
 
@@ -383,6 +416,8 @@ defineExpose({ refreshData });
       }
 
       .fc-toolbar-title {
+        position: relative;
+        left: -100%;
         -webkit-app-region: drag;
         cursor: grab;
       }
