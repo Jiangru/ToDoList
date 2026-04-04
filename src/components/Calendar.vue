@@ -1,9 +1,7 @@
 <template>
-  <div class="calendar-container" ref="calendarContainer">
-    <FullCalendar
-      ref="fullCalendarRef"
-      :options="calendarOptions"
-    />
+  <div class="calendar-container">
+    <FullCalendar ref="fullCalendarRef" :options="calendarOptions" />
+    
     <div class="export-controls">
       <select v-model="exportYear" class="year-select">
         <option value="">全部年份</option>
@@ -17,6 +15,8 @@
       <button class="export-btn" @click="exportToExcel" title="导出 Excel">📊</button>
       <button class="export-btn" @click="hideToTray" title="最小化到托盘">🔽</button>
     </div>
+
+    <!-- 未完成待办模态框 -->
     <div v-if="showTodoModal" class="modal-overlay" @click.self="showTodoModal = false">
       <div class="modal-card">
         <div class="modal-header">
@@ -26,7 +26,12 @@
         <div class="modal-body">
           <div v-if="incompleteTodos.length === 0" class="empty-tip">暂无未完成待办</div>
           <div v-else class="todo-list-modal">
-            <div v-for="item in incompleteTodos" :key="item.todo.id" class="todo-modal-item" @click="openTodoEditor(item.date, item.todo.id)">
+            <div
+              v-for="item in incompleteTodos"
+              :key="item.todo.id"
+              class="todo-modal-item"
+              @click="openTodoEditor(item.date, item.todo.id)"
+            >
               <span class="todo-date">{{ item.date }}</span>
               <span class="todo-index">第{{ item.index }}条</span>
               <span class="todo-text">{{ item.todo.text }}</span>
@@ -35,63 +40,103 @@
         </div>
       </div>
     </div>
+
+    <!-- 年份选择浮窗 -->
+    <Teleport to="body">
+      <div
+        v-if="showYearPicker"
+        class="picker-popup year-picker"
+        :style="{ left: pickerX + 'px', top: pickerY + 'px' }"
+        @click.stop
+      >
+        <div class="picker-grid year-grid">
+          <div
+            v-for="year in yearList"
+            :key="year"
+            class="picker-item"
+            :class="{ current: year === currentViewYear }"
+            @click="jumpToYear(year)"
+          >
+            {{ year }}
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 月份选择浮窗 -->
+    <Teleport to="body">
+      <div
+        v-if="showMonthPicker"
+        class="picker-popup month-picker"
+        :style="{ left: pickerX + 'px', top: pickerY + 'px' }"
+        @click.stop
+      >
+        <div class="picker-grid month-grid">
+          <div
+            v-for="month in monthList"
+            :key="month.num"
+            class="picker-item"
+            :class="{ current: month.num === currentViewMonth }"
+            @click="jumpToMonth(month.num)"
+          >
+            {{ month.name }}
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, inject, computed, nextTick, watch } from 'vue';
-import { formatDateTime } from '../utils/common.js';
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, inject, nextTick, watch } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import zhLocale from '@fullcalendar/core/locales/zh-cn';
+import { formatDateTime } from '../utils/common.js';
 
+// ==================== 常量定义 ====================
+const MONTHS = [
+  { num: 1, name: '1月' }, { num: 2, name: '2月' }, { num: 3, name: '3月' },
+  { num: 4, name: '4月' }, { num: 5, name: '5月' }, { num: 6, name: '6月' },
+  { num: 7, name: '7月' }, { num: 8, name: '8月' }, { num: 9, name: '9月' },
+  { num: 10, name: '10月' }, { num: 11, name: '11月' }, { num: 12, name: '12月' }
+];
+const YEAR_PICKER_SIZE = { width: 180, height: 160 };
+const MONTH_PICKER_SIZE = { width: 240, height: 200 };
+
+// ==================== 依赖注入 ====================
 const openEditor = inject('openEditor');
-const todosMap = ref({});
+
+// ==================== 响应式数据 ====================
 const fullCalendarRef = ref(null);
-const calendarContainer = ref(null);
-// 模态框状态
+const todosMap = shallowRef({});           // 使用 shallowRef 优化性能
 const showTodoModal = ref(false);
 const incompleteTodos = ref([]);
-
-// 导出选项
 const exportYear = ref('');
 const exportMonth = ref('');
+
+// 浮窗状态
+const showYearPicker = ref(false);
+const showMonthPicker = ref(false);
+const pickerX = ref(0);
+const pickerY = ref(0);
+const yearList = ref([]);
+const monthList = ref(MONTHS);
+const currentViewYear = ref(new Date().getFullYear());
+const currentViewMonth = ref(new Date().getMonth() + 1);
+
+// ==================== 计算属性 ====================
 const yearOptions = computed(() => {
   const years = new Set();
   for (const date in todosMap.value) {
     const year = date.split('-')[0];
     if (year) years.add(year);
   }
-  return Array.from(years).sort((a,b) => b - a);
+  return Array.from(years).sort((a, b) => b - a);
 });
 
-// 监听导出年份和月份变化，自动跳转日历视图
-watch([exportYear, exportMonth], ([year, month]) => {
-  const calendarApi = fullCalendarRef.value?.getApi();
-  if (!calendarApi) return;
-
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0-11
-
-  let targetYear, targetMonth;
-
-  if (!year && !month) {
-    // 全部年份和月份 -> 当前年月
-    targetYear = currentYear;
-    targetMonth = currentMonth;
-  } else {
-    // 有年份或月份
-    targetYear = year ? parseInt(year) : currentYear;
-    targetMonth = month ? (parseInt(month) - 1) : currentMonth;
-  }
-
-  const targetDate = new Date(targetYear, targetMonth, 1);
-  calendarApi.gotoDate(targetDate);
-});
-
-// 加载所有待办数据
+// ==================== 数据操作 ====================
 async function loadTodos() {
   if (!window.electronAPI?.getTodos) {
     console.error('electronAPI.getTodos 不可用');
@@ -99,13 +144,10 @@ async function loadTodos() {
   }
   const data = await window.electronAPI.getTodos();
   todosMap.value = data || {};
-  if (fullCalendarRef.value?.getApi()) {
-    fullCalendarRef.value.getApi().refetchEvents();
-  }
+  fullCalendarRef.value?.getApi()?.refetchEvents();
   updateTips();
 }
 
-// 加载所有未完成待办
 async function loadIncompleteTodos() {
   if (!window.electronAPI?.getTodos) return;
   const data = await window.electronAPI.getTodos();
@@ -115,11 +157,7 @@ async function loadIncompleteTodos() {
     if (Array.isArray(todos)) {
       todos.forEach((todo, idx) => {
         if (!todo.completed) {
-          result.push({
-            date: date,
-            todo: todo,
-            index: idx + 1, // 序号从1开始
-          });
+          result.push({ date, todo, index: idx + 1 });
         }
       });
     }
@@ -127,25 +165,11 @@ async function loadIncompleteTodos() {
   incompleteTodos.value = result;
 }
 
-// 显示模态框
-function showIncompleteTodos() {
-  loadIncompleteTodos(); // 每次打开时刷新数据
-  showTodoModal.value = true;
-}
-
-// 点击待办项，打开编辑器并定位
-function openTodoEditor(date, todoId) {
-  // 获取该日期的所有待办（从 todosMap 中取）
-  const todos = todosMap.value[date] || [];
-  openEditor(date, todos, todoId);
-  showTodoModal.value = false; // 关闭模态框
-}
-
 function refreshData() {
   loadTodos();
 }
 
-// 更新日期格子的提示元素和状态类，并高亮有未完成待办的日期
+// ==================== UI 更新 ====================
 function updateTips() {
   const dayCells = document.querySelectorAll('.fc-daygrid-day');
   dayCells.forEach(cell => {
@@ -156,7 +180,6 @@ function updateTips() {
     const hasTodos = dayTodos && dayTodos.length > 0;
     const hasIncomplete = hasTodos && dayTodos.some(todo => !todo.completed);
 
-    // 添加/更新状态类
     if (hasIncomplete) {
       cell.classList.add('has-incomplete-todos');
       cell.classList.remove('has-todos', 'no-todos');
@@ -168,7 +191,6 @@ function updateTips() {
       cell.classList.remove('has-todos', 'has-incomplete-todos');
     }
 
-    // 确保提示元素存在
     let tipEl = cell.querySelector('.double-click-tip');
     if (!tipEl) {
       tipEl = document.createElement('div');
@@ -179,151 +201,121 @@ function updateTips() {
   });
 }
 
-// 日历配置
-const calendarOptions = {
-  plugins: [dayGridPlugin, interactionPlugin],
-  initialView: 'dayGridMonth',
-  locale: zhLocale,
-  headerToolbar: {
-    left: 'prev,next today',
-    center: 'title',
-    right: ''
-  },
-  height: 'auto',
-  events: (fetchInfo, successCallback) => {
-    const events = [];
-    for (const date in todosMap.value) {
-      const todos = todosMap.value[date];
-      if (Array.isArray(todos)) {
-        todos.forEach(todo => {
-          events.push({
-            id: todo.id,
-            title: todo.text,
-            start: date,
-            allDay: true,
-            extendedProps: {
-              todo: todo,
-              date: date
-            }
-          });
-        });
-      }
-    }
-    successCallback(events);
-  },
-  eventContent: (arg) => {
-    const todo = arg.event.extendedProps.todo;
-    const todoText = arg.event.title;
-    const container = document.createElement('div');
-    container.className = 'custom-todo-item';
+// ==================== 自定义标题栏（年月浮窗触发器）====================
+function injectCustomTitle(calendarApi) {
+  const titleEl = document.querySelector('.fc-toolbar-title');
+  if (!titleEl) return;
 
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'todo-title';
-    titleSpan.textContent = todoText;
-    if (todo.completed) {
-      titleSpan.style.textDecoration = 'line-through';
-    }
-    container.appendChild(titleSpan);
+  const currentDate = calendarApi.getDate();
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth() + 1;
+  currentViewYear.value = year;
+  currentViewMonth.value = month;
 
-    // 显示备注数量（如有）
-    if (todo.remarks && todo.remarks.length > 0) {
-      const remarkCountSpan = document.createElement('span');
-      remarkCountSpan.className = 'remark-count';
-      remarkCountSpan.textContent = `📝 ${todo.remarks.length}条备注`;
-      container.appendChild(remarkCountSpan);
-    } else if (todo.remark) {
-      const remarkSpan = document.createElement('span');
-      remarkSpan.className = 'todo-remark';
-      remarkSpan.textContent = todo.remark;
-      container.appendChild(remarkSpan);
-    }
+  titleEl.innerHTML = '';
+  titleEl.style.display = 'flex';
+  titleEl.style.gap = '0px';
+  titleEl.style.cursor = 'default';
 
-    return { domNodes: [container] };
-  },
-  eventClick: (info) => {
-    const date = info.event.extendedProps.date;
-    const todos = todosMap.value[date] || [];
-    openEditor(date, todos);
-  },
-  dateClick: (info) => {
-    const clickTime = Date.now();
-    if (!window._lastClick) {
-      window._lastClick = { dateStr: null, time: 0 };
-    }
-    const last = window._lastClick;
-    const isDoubleClick = (info.dateStr === last.dateStr) && (clickTime - last.time < 300);
-    if (isDoubleClick) {
-      const todos = todosMap.value[info.dateStr] || [];
-      openEditor(info.dateStr, todos);
-    }
-    window._lastClick = { dateStr: info.dateStr, time: clickTime };
-  },
-  viewDidMount: (view) => {
-    const titleEl = view.el.querySelector('.fc-toolbar-title');
-    if (!titleEl) return;
+  // 年份按钮
+  const yearSpan = createTitleButton(`${year}年`, (e) => openYearPicker(e, year));
+  // 月份按钮
+  const monthSpan = createTitleButton(`${month}月`, (e) => openMonthPicker(e, year, month));
 
-    const currentDate = view.getCurrentData().currentDate;
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
+  titleEl.appendChild(yearSpan);
+  titleEl.appendChild(monthSpan);
+}
 
-    titleEl.innerHTML = '';
-    titleEl.style.display = 'flex';
-    titleEl.style.gap = '8px';
-    titleEl.style.cursor = 'default';
+function createTitleButton(text, onClick) {
+  const btn = document.createElement('span');
+  btn.textContent = text;
+  btn.style.cssText = `
+    cursor: pointer;
+    padding: 2px 6px;
+    transition: background 0.2s;
+    -webkit-app-region: no-drag;
+  `;
+  btn.onmouseenter = () => { btn.style.backgroundColor = 'rgba(255,255,255,0.15)'; };
+  btn.onmouseleave = () => { btn.style.backgroundColor = 'transparent'; };
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    onClick(e);
+  };
+  return btn;
+}
 
-    const monthSpan = document.createElement('span');
-    monthSpan.textContent = `${month + 1}月`;
-    monthSpan.style.cursor = 'pointer';
-    monthSpan.style.padding = '0 4px';
-    monthSpan.style.borderRadius = '4px';
-    monthSpan.style.transition = 'background 0.2s';
-    monthSpan.onmouseenter = () => { monthSpan.style.backgroundColor = 'rgba(255,255,255,0.2)'; };
-    monthSpan.onmouseleave = () => { monthSpan.style.backgroundColor = 'transparent'; };
-    monthSpan.onclick = (e) => {
-      e.stopPropagation();
-      const newMonth = prompt('请输入月份（1-12）', month + 1);
-      if (newMonth && !isNaN(newMonth) && newMonth >= 1 && newMonth <= 12) {
-        const calendarApi = fullCalendarRef.value?.getApi();
-        if (calendarApi) {
-          const newDate = new Date(year, parseInt(newMonth) - 1, 1);
-          calendarApi.gotoDate(newDate);
-        }
-      }
-    };
+// ==================== 浮窗逻辑 ====================
+function getPopupPosition(event, popupSize) {
+  const { clientX, clientY } = event;
+  let left = clientX + 10;
+  let top = clientY + 10;
+  if (left + popupSize.width > window.innerWidth) left = clientX - popupSize.width - 10;
+  if (top + popupSize.height > window.innerHeight) top = clientY - popupSize.height - 10;
+  return { left: Math.max(10, left), top: Math.max(10, top) };
+}
 
-    // 年份元素
-    const yearSpan = document.createElement('span');
-    yearSpan.textContent = `${year}年`;
-    yearSpan.style.cursor = 'pointer';
-    yearSpan.style.padding = '0 4px';
-    yearSpan.style.borderRadius = '4px';
-    yearSpan.style.transition = 'background 0.2s';
-    yearSpan.onmouseenter = () => { yearSpan.style.backgroundColor = 'rgba(255,255,255,0.2)'; };
-    yearSpan.onmouseleave = () => { yearSpan.style.backgroundColor = 'transparent'; };
-    yearSpan.onclick = (e) => {
-      e.stopPropagation();
-      const newYear = prompt('请输入年份（例如 2025）', year);
-      if (newYear && !isNaN(newYear) && newYear.length === 4) {
-        const calendarApi = fullCalendarRef.value?.getApi();
-        if (calendarApi) {
-          const currentDate = calendarApi.getDate();
-          currentDate.setFullYear(parseInt(newYear));
-          calendarApi.gotoDate(currentDate);
-        }
-      }
-    };
+function openYearPicker(event, currentYear) {
+  const startYear = currentYear - 4;
+  yearList.value = Array.from({ length: 9 }, (_, i) => startYear + i);
+  const { left, top } = getPopupPosition(event, YEAR_PICKER_SIZE);
+  pickerX.value = left;
+  pickerY.value = top;
+  showYearPicker.value = true;
+  showMonthPicker.value = false;
+}
 
-    titleEl.appendChild(monthSpan);
-    titleEl.appendChild(yearSpan);
-  },
-  // 新增：日期范围变化时重新应用样式
-  datesSet: () => {
-    // 使用 nextTick 确保 DOM 已更新
-    nextTick(() => {
-      updateTips();
-    });
+function openMonthPicker(event, currentYear, currentMonth) {
+  currentViewYear.value = currentYear;
+  currentViewMonth.value = currentMonth;
+  const { left, top } = getPopupPosition(event, MONTH_PICKER_SIZE);
+  pickerX.value = left;
+  pickerY.value = top;
+  showMonthPicker.value = true;
+  showYearPicker.value = false;
+}
+
+function closePickers() {
+  showYearPicker.value = false;
+  showMonthPicker.value = false;
+}
+
+function jumpToYear(year) {
+  const calendarApi = fullCalendarRef.value?.getApi();
+  if (calendarApi) {
+    const currentDate = calendarApi.getDate();
+    calendarApi.gotoDate(new Date(year, currentDate.getMonth(), 1));
   }
-};
+  closePickers();
+}
+
+function jumpToMonth(month) {
+  const calendarApi = fullCalendarRef.value?.getApi();
+  if (calendarApi) {
+    const currentDate = calendarApi.getDate();
+    calendarApi.gotoDate(new Date(currentDate.getFullYear(), month - 1, 1));
+  }
+  closePickers();
+}
+
+// 全局点击关闭浮窗（排除触发器与浮窗本身）
+function handleGlobalClick(e) {
+  const target = e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
+  if (target?.closest('.fc-toolbar-title span')) return; // 点击年月按钮不关闭
+  if (target?.closest('.picker-popup')) return;          // 点击浮窗内部不关闭
+  closePickers();
+}
+
+// ==================== 其他交互 ====================
+function showIncompleteTodos() {
+  loadIncompleteTodos();
+  showTodoModal.value = true;
+}
+
+function openTodoEditor(date, todoId) {
+  const todos = todosMap.value[date] || [];
+  openEditor(date, todos, todoId);
+  showTodoModal.value = false;
+}
 
 async function exportToExcel() {
   const allTodos = [];
@@ -336,7 +328,7 @@ async function exportToExcel() {
     if (Array.isArray(dayTodos)) {
       dayTodos.forEach(todo => {
         let remarkText = '';
-        if (todo.remarks && todo.remarks.length > 0) {
+        if (todo.remarks?.length) {
           remarkText = todo.remarks.map(r => `【${r.text}】`).join('\n');
         } else if (todo.remark) {
           remarkText = `【${todo.remark}】`;
@@ -357,23 +349,110 @@ async function exportToExcel() {
   const result = await window.electronAPI.exportExcel(allTodos);
   if (result.success) {
     alert(`导出成功！文件已保存至：${result.path}`);
-  } else if (result.canceled) {
-    // 用户取消，不提示
-  } else {
+  } else if (!result.canceled) {
     alert('导出失败：' + (result.error || '未知错误'));
   }
 }
 
 function hideToTray() {
-  if (window.electronAPI && window.electronAPI.hideWindow) {
-    window.electronAPI.hideWindow();
-  } else {
-    console.error('electronAPI.hideWindow 不可用');
-  }
+  window.electronAPI?.hideWindow?.() || console.error('electronAPI.hideWindow 不可用');
 }
 
+// ==================== 日历配置 ====================
+const calendarOptions = {
+  plugins: [dayGridPlugin, interactionPlugin],
+  initialView: 'dayGridMonth',
+  locale: zhLocale,
+  headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+  height: 'auto',
+  events: (_, successCallback) => {
+    const events = [];
+    for (const date in todosMap.value) {
+      const todos = todosMap.value[date];
+      if (Array.isArray(todos)) {
+        todos.forEach(todo => {
+          events.push({
+            id: todo.id,
+            title: todo.text,
+            start: date,
+            allDay: true,
+            extendedProps: { todo, date }
+          });
+        });
+      }
+    }
+    successCallback(events);
+  },
+  eventContent: (arg) => {
+    const todo = arg.event.extendedProps.todo;
+    const container = document.createElement('div');
+    container.className = 'custom-todo-item';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'todo-title';
+    titleSpan.textContent = arg.event.title;
+    if (todo.completed) titleSpan.style.textDecoration = 'line-through';
+    container.appendChild(titleSpan);
+     // 备注图标（有备注时显示）
+    const hasRemark = (todo.remarks && todo.remarks.length > 0) || todo.remark;
+    if (hasRemark) {
+      const remarkIcon = document.createElement('span');
+      remarkIcon.className = 'todo-remark-icon';
+      remarkIcon.textContent = '📝';
+      let remarkCount = todo.remarks?.length || (todo.remark ? 1 : 0);
+      remarkIcon.title = `${remarkCount}条备注`;
+      container.appendChild(remarkIcon);
+    }
+
+    // 提醒图标（有提醒规则时显示）
+    const hasReminder = todo.reminders && todo.reminders.length > 0;
+    if (hasReminder) {
+      const reminderIcon = document.createElement('span');
+      reminderIcon.className = 'todo-reminder-icon';
+      reminderIcon.textContent = '⏰';
+      reminderIcon.title = '已设置提醒';
+      container.appendChild(reminderIcon);
+    }
+    return { domNodes: [container] };
+  },
+  eventClick: (info) => {
+    const { date, todos } = info.event.extendedProps;
+    openEditor(date, todosMap.value[date] || []);
+  },
+  dateClick: (info) => {
+    const now = Date.now();
+    if (!window._lastClick) window._lastClick = { dateStr: null, time: 0 };
+    const last = window._lastClick;
+    if (info.dateStr === last.dateStr && now - last.time < 300) {
+      openEditor(info.dateStr, todosMap.value[info.dateStr] || []);
+    }
+    window._lastClick = { dateStr: info.dateStr, time: now };
+  },
+  viewDidMount: (view) => injectCustomTitle(view.view.calendar),
+  datesSet: () => {
+    const calendarApi = fullCalendarRef.value?.getApi();
+    if (calendarApi) injectCustomTitle(calendarApi);
+    nextTick(updateTips);
+  }
+};
+
+// ==================== 生命周期 ====================
 onMounted(() => {
   loadTodos();
+  window.addEventListener('click', handleGlobalClick);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', handleGlobalClick);
+});
+
+// 监听导出筛选，自动跳转日历
+watch([exportYear, exportMonth], ([year, month]) => {
+  const calendarApi = fullCalendarRef.value?.getApi();
+  if (!calendarApi) return;
+  const now = new Date();
+  let targetYear = year ? parseInt(year) : now.getFullYear();
+  let targetMonth = month ? parseInt(month) - 1 : now.getMonth();
+  calendarApi.gotoDate(new Date(targetYear, targetMonth, 1));
 });
 
 defineExpose({ refreshData });
@@ -414,22 +493,18 @@ defineExpose({ refreshData });
         -webkit-app-region: no-drag;
         cursor: pointer;
       }
-
-      .fc-toolbar-title {
-        position: relative;
-        left: -100%;
-        -webkit-app-region: drag;
-        cursor: grab;
-      }
     }
 
     .custom-todo-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;  // 图标与文本间距
       background: rgba(255, 193, 7, 0.2);
       border-left: 3px solid #ffc107;
       font-size: 12px;
       padding: 2px 4px;
       margin: 1px 0;
-      border-radius: 3px;
+      border-radius: 0px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -438,6 +513,20 @@ defineExpose({ refreshData });
 
       &:hover {
         background: rgba(255, 193, 7, 0.4);
+      }
+      .todo-title {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .todo-remark-icon,
+      .todo-reminder-icon {
+        font-size: 10px;
+        opacity: 0.8;
+        cursor: default;
+        flex-shrink: 0;
       }
     }
 
@@ -467,18 +556,25 @@ defineExpose({ refreshData });
     }
 
     .fc-toolbar-title {
+      position: relative;
+      left: -100%;
       color: white;
     }
     .fc-button {
       background: rgba(255,255,255,0.2);
       border: none;
       color: white;
+      padding: 0 6px;
+      border-radius: 0;
       &:hover {
         background: rgba(255,255,255,0.3);
       }
     }
+    .fc-today-button {
+      padding: 2px 6px;
+      color: white;
+    }
 
-    /* 日期格子基础样式 */
     .fc-daygrid-day {
       background: rgba(0,0,0,0.3);
       border-color: rgba(255,255,255,0.2);
@@ -489,17 +585,15 @@ defineExpose({ refreshData });
       transition: background 0.2s;
     }
 
-    /* 有未完成待办的日期格子高亮 */
     .fc-daygrid-day.has-incomplete-todos {
-      background: rgba(255, 80, 80, 0.3);  /* 浅红色背景，醒目但不刺眼 */
+      background: rgba(255, 80, 80, 0.3);
       &:hover {
         background: rgba(255, 80, 80, 0.5);
       }
     }
 
-    /* 全部待办都已完成的日期格子（可选） */
     .fc-daygrid-day.has-todos {
-      background: rgba(0, 128, 0, 0.2);  /* 浅绿色，表示已完成全部 */
+      background: rgba(0, 128, 0, 0.2);
       &:hover {
         background: rgba(0, 128, 0, 0.4);
       }
@@ -531,7 +625,7 @@ defineExpose({ refreshData });
       font-size: 12px;
       color: rgba(255, 255, 255, 0.8);
       padding: 4px 8px;
-      border-radius: 4px;
+      border-radius: 0px;
       white-space: nowrap;
       pointer-events: none;
       z-index: 1;
@@ -550,7 +644,7 @@ defineExpose({ refreshData });
 
   .export-controls {
     position: absolute;
-    top: 20px;
+    top: 30px;
     right: 20px;
     z-index: 10;
     display: flex;
@@ -562,7 +656,7 @@ defineExpose({ refreshData });
       border: none;
       color: white;
       padding: 6px 12px;
-      border-radius: 4px;
+      border-radius: 0px;
       font-size: 12px;
       cursor: pointer;
       &:hover {
@@ -579,7 +673,7 @@ defineExpose({ refreshData });
       border: none;
       color: white;
       padding: 6px 12px;
-      border-radius: 4px;
+      border-radius: 0px;
       cursor: pointer;
       font-size: 12px;
       &:hover {
@@ -588,6 +682,7 @@ defineExpose({ refreshData });
     }
   }
 }
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -606,7 +701,7 @@ defineExpose({ refreshData });
   width: 500px;
   max-width: 90vw;
   background: #2c2c2e;
-  border-radius: 12px;
+  border-radius: 0px;
   overflow: hidden;
   color: white;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
@@ -643,7 +738,7 @@ defineExpose({ refreshData });
 
 .todo-modal-item {
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  border-radius: 0px;
   padding: 8px 12px;
   cursor: pointer;
   transition: background 0.2s;
@@ -663,7 +758,7 @@ defineExpose({ refreshData });
     font-size: 11px;
     background: rgba(255, 255, 255, 0.2);
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 0px;
   }
   .todo-text {
     flex: 1;
@@ -679,4 +774,50 @@ defineExpose({ refreshData });
   color: rgba(255, 255, 255, 0.5);
   padding: 20px;
 }
+</style>
+
+<style lang="scss">
+/* 浮窗样式（非 scoped，确保 Teleport 生效） */
+.picker-popup {
+  position: fixed;
+  background: rgba(40, 40, 45, 0.98);
+  backdrop-filter: blur(8px);
+  border-radius: 0px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 3000;
+  padding: 12px;
+  min-width: 160px;
+  
+  .picker-grid {
+    display: grid;
+    gap: 8px;
+    &.year-grid { grid-template-columns: repeat(3, 1fr); }
+    &.month-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  
+  .picker-item {
+    text-align: center;
+    padding: 8px 4px;
+    border-radius: 0px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #e0e0e0;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.05);
+    &:hover {
+      background: rgba(255, 193, 7, 0.3);
+      color: white;
+      transform: scale(1.02);
+    }
+    &.current {
+      background: #ffc107;
+      color: #1e1e1e;
+      font-weight: bold;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+  }
+}
+.year-picker { width: 180px; }
+.month-picker { width: 240px; }
 </style>
