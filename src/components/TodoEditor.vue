@@ -52,6 +52,7 @@
                   placeholder="请输入备注"
                   @blur="saveRemark(todo, rIdx, $event)"
                   @keyup.enter="saveRemark(todo, rIdx, $event, true)"
+                  @keydown="handleRemarkKeydown($event, todo, rIdx)"
                   class="remark-input"
                   :ref="el => setRemarkInputRef(idx, rIdx, el)"
                 />
@@ -324,6 +325,36 @@ function startEditRemark(todo, todoIdx, rIdx) {
   });
 }
 
+// 处理备注输入框的键盘事件（Ctrl+; 插入当前日期）
+function handleRemarkKeydown(event, todo, remarkIdx) {
+  // 检测 Ctrl+; (分号键，keyCode 186 或 key 为 ';')
+  if ((event.ctrlKey || event.metaKey) && event.key === ';') {
+    event.preventDefault(); // 阻止浏览器默认行为
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${year}年${month}月${day}日`;
+    
+    const remark = todo.remarks[remarkIdx];
+    if (!remark) return;
+    
+    const inputEl = event.target;
+    const start = inputEl.selectionStart;
+    const end = inputEl.selectionEnd;
+    const currentText = remark.tempText || '';
+    // 在光标位置插入日期
+    const newText = currentText.slice(0, start) + dateStr + currentText.slice(end);
+    remark.tempText = newText;
+    
+    // 更新 v-model 后，等待 DOM 更新，再将光标移到插入文本之后
+    nextTick(() => {
+      inputEl.selectionStart = inputEl.selectionEnd = start + dateStr.length;
+      inputEl.focus();
+    });
+  }
+}
+
 function saveRemark(todo, rIdx, event, fromEnter = false) {
   const remark = todo.remarks[rIdx];
   if (!remark) return;
@@ -454,7 +485,6 @@ function close() {
   width: 560px;
   max-width: 90vw;
   background: #2c2c2e;
-  border-radius: 12px;
   color: white;
   overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);

@@ -94,7 +94,7 @@ provide('openEditor', openEditor);
   height: 100vh;
   background: rgba(30, 30, 40, 0.7);
   backdrop-filter: blur(10px);
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 8px 20px rgba(0,0,0,0.2);
   -webkit-app-region: drag;   /* 整个窗口可拖拽 */

@@ -701,7 +701,6 @@ defineExpose({ refreshData });
   width: 500px;
   max-width: 90vw;
   background: #2c2c2e;
-  border-radius: 0px;
   overflow: hidden;
   color: white;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
